@@ -1,6 +1,21 @@
-# Stiff-Medium Path C Simulation
+# Stiff-Medium Confinement Theory — Working Repository
 
-2D lattice-gas simulation testing whether the displacement-only neutrino dynamics described in `docs/superpowers/specs/2026-04-29-stiff-medium-theory-design.md` produce stable electron formation.
+Theoretical-physics work on a substrate-mechanical model of particles, atoms, and forces. The substrate is a 3D stiff elastic medium; particles are localized strain patterns; forces are medium back-reaction; spin-½ is half-integer (Möbius) winding of the strain. The repository contains the spec, simulation, tests, and analytical derivations as they evolve.
+
+**Spec:** [`docs/superpowers/specs/2026-04-29-stiff-medium-theory-design.md`](docs/superpowers/specs/2026-04-29-stiff-medium-theory-design.md) (see §17 Derivation Status for what's derived vs. posited).
+
+## Quick status
+
+| | Status |
+|---|---|
+| Tests | 57 passing |
+| Simulation modules | 7 (neutrino, dynamics, three_d, back_reaction, mobius_dynamics, atomic, spinor) |
+| Empirically demonstrated | back-reaction binding (5.62 orbits), Pauli-via-Möbius (same-twist diverges, opposite-twist binds), hydrogen isotope shifts (D/H = +272 ppm, T/H = +363 ppm matching real measurements) |
+| Foundation gaps remaining | 45° rule (hand-waved), ξ length scale (posited), bi-pyramid type (unspecified), Möbius topology origin (implemented not derived) |
+
+For the full derivation-status audit, see spec §17.
+
+## What this is
 
 ## Setup
 ```
@@ -22,6 +37,31 @@ pytest
 ## What this tests
 
 Two neutrinos on collision course at 45° angles. If the rules produce a bound orbital state, that's a positive result for the theory. If they don't, the rules need revision.
+
+## Empirical results, summary
+
+(Full derivation status in spec §17.)
+
+**Demonstrated:**
+- Medium back-reaction + cone projection produces sustained 2D orbital binding (5.62 full revolutions in `back_reaction_v2.py` Test 2; |v|=C preserved).
+- Möbius internal-twist dynamics produces state-dependent Pauli exclusion: opposite-twist pairs bind, same-twist pairs diverge (`mobius_pauli_test.py`).
+- Hydrogen isotope shifts at Bohr-scaled radii: D/H = +272 ppm, T/H = +363 ppm — match real measurements within ppm precision (`hydrogen_isotopes_v3.py`).
+
+**Derived analytically:**
+- c² = K/ρ from linear elasticity Lagrangian (Path B Phase 1.1).
+- Sine-Gordon kink rest energy E_K = 8K/ξ; neutrino rest mass m_ν = 8ρξ (Path B Phase 1.2).
+- Cone azimuth = exactly 1 turn per orbital revolution (geometric necessity).
+
+**Falsified informatively:**
+- Bare displacement-only rule (no back-reaction) gives 1D bound only, no 2D orbits — drove the §5.5 back-reaction revision.
+- Simple sine-Gordon breather predicts m_e ≤ 2 m_ν; real ratio is ~10⁵ — drove the spin-½ Möbius requirement and Path B Phase 2.2 reformulation as fermionic breather.
+- 2D simulation of any kind cannot produce 2D orbital motion (cone collapses to 4 directions) — drove the 3D simulation work.
+
+**Still posited or open** (each is bounded work for future sessions):
+- The 45° rule itself.
+- The medium length scale ξ.
+- The specific bi-pyramid type for nucleons.
+- Multi-electron shell-filling rule.
 
 ## Result of v1 experiment
 
