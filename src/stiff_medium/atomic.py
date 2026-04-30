@@ -129,3 +129,69 @@ def n_body_newton_step(
     new_f = n_body_force(new_pos, charges, coupling)
     new_v = [half_v[i] + 0.5 * (new_f[i] / masses[i]) * dt for i in range(len(positions))]
     return new_pos, new_v
+
+
+def n_body_force_with_pauli(
+    positions: list[np.ndarray],
+    charges: list[float],
+    spins: list[int],
+    coupling: float = 1.0,
+    pauli_strength: float = 1.0,
+    pauli_radius: float = 0.1,
+) -> list[np.ndarray]:
+    """N-body force = Coulomb + Pauli exclusion for same-charge same-spin pairs.
+
+    Per spec §5.5.1 + §18.5: identical fermions (same charge, same Möbius/spin)
+    cannot occupy the same coordinate. Implemented here as a short-range Yukawa-
+    like repulsion that fires only between same-charge AND same-spin particles.
+
+    F_pauli(i, j) = pauli_strength × (pauli_radius/d)⁴ × r̂ (repulsive)
+    fires only when charges[i] == charges[j] AND spins[i] == spins[j].
+    """
+    n = len(positions)
+    forces = [np.zeros(3) for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            diff = positions[j] - positions[i]
+            d = float(np.linalg.norm(diff))
+            if d < 1e-12:
+                continue
+            unit = diff / d
+
+            # Coulomb component (always)
+            f_coulomb_on_i = -coupling * charges[i] * charges[j] / (d * d) * unit
+
+            # Pauli component (only same charge AND same spin)
+            f_pauli_on_i = np.zeros(3)
+            if charges[i] == charges[j] and spins[i] == spins[j]:
+                # Steeply repulsive at d ~ pauli_radius, fades fast at d > pauli_radius
+                f_pauli_on_i = -pauli_strength * (pauli_radius / d) ** 4 * unit
+
+            f_on_i = f_coulomb_on_i + f_pauli_on_i
+            forces[i] = forces[i] + f_on_i
+            forces[j] = forces[j] - f_on_i
+    return forces
+
+
+def n_body_step_with_pauli(
+    positions: list[np.ndarray],
+    velocities: list[np.ndarray],
+    masses: list[float],
+    charges: list[float],
+    spins: list[int],
+    dt: float,
+    coupling: float = 1.0,
+    pauli_strength: float = 1.0,
+    pauli_radius: float = 0.1,
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """Velocity-Verlet step with Pauli exclusion for identical fermions."""
+    f = n_body_force_with_pauli(
+        positions, charges, spins, coupling, pauli_strength, pauli_radius
+    )
+    half_v = [v + 0.5 * (f[i] / masses[i]) * dt for i, v in enumerate(velocities)]
+    new_pos = [p + half_v[i] * dt for i, p in enumerate(positions)]
+    new_f = n_body_force_with_pauli(
+        new_pos, charges, spins, coupling, pauli_strength, pauli_radius
+    )
+    new_v = [half_v[i] + 0.5 * (new_f[i] / masses[i]) * dt for i in range(len(positions))]
+    return new_pos, new_v
