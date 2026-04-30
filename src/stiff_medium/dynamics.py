@@ -19,3 +19,31 @@ def detect_overlap(a: Neutrino, b: Neutrino, r_overlap: float) -> bool:
     """
     distance = float(np.linalg.norm(a.position - b.position))
     return distance < r_overlap
+
+
+def displace(
+    a: Neutrino, b: Neutrino, push: float
+) -> tuple[Neutrino, Neutrino]:
+    """Push two overlapping neutrinos apart along the line connecting them.
+
+    Velocities are NOT changed (spec §5). If positions coincide exactly,
+    use the velocity-difference vector as a fallback; if that's also zero,
+    fall back to (1, 0).
+    """
+    diff = b.position - a.position
+    norm = float(np.linalg.norm(diff))
+
+    if norm < 1e-12:
+        # Coincident: use velocity difference, then a fixed fallback.
+        diff = b.velocity - a.velocity
+        norm = float(np.linalg.norm(diff))
+    if norm < 1e-12:
+        diff = np.array([1.0, 0.0])
+        norm = 1.0
+
+    unit = diff / norm
+    shift = unit * (push / 2.0)
+
+    moved_a = Neutrino(position=a.position - shift, velocity=a.velocity.copy())
+    moved_b = Neutrino(position=b.position + shift, velocity=b.velocity.copy())
+    return moved_a, moved_b
