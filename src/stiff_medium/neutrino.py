@@ -6,7 +6,7 @@ import numpy as np
 C: float = 1.0  # natural units; c is the medium's wave speed
 
 
-@dataclass
+@dataclass(frozen=True)
 class Neutrino:
     """A neutrino is a position + velocity vector at 45° to an axis, speed c.
 
