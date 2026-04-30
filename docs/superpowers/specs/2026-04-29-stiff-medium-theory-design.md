@@ -177,6 +177,24 @@ One electron + one proton = one valley + one hill. They **tidally lock** face-to
 
 The 1/n² Rydberg spectrum is conjectured to come from excitation modes of the locked pair (rocking, breathing, twisting). Discrete modes because the geometry is fixed. Numerical match to Rydberg's constant is a Path B checkpoint.
 
+#### 8.1a Atomic-scale dynamics is hierarchical
+
+**Important clarification (added after Path C hydrogen simulation):** the cone constraint of spec §5 applies to the *underlying neutrinos*, not to bound-state center-of-mass dynamics. At the atomic scale (electron + nucleus), each "particle" is already a multi-neutrino bound configuration whose COM velocity is FREE (not constrained to c). The relevant force at this scale is Coulomb-like — an averaged effect of medium back-reaction over the bound states' internal structure (per §10's slope-shape complementarity).
+
+**Empirical result from `scripts/hydrogen_isotopes_v2.py`:**
+
+| Isotope | m_n / m_e | Reduced μ | Simulation ω | (ω/ω_H − 1) |
+|---|---|---|---|---|
+| H | 1836.15 | 0.999456 | 0.159198 | 0 |
+| D | 3670.48 | 0.999728 | 0.159177 | −136 ppm |
+| T | 5496.92 | 0.999818 | 0.159169 | −181 ppm |
+
+This is the *classical 2-body fixed-radius* result: ω ∝ 1/√μ. **Real Rydberg shift is +272 ppm** (D/H), reflecting *quantized* Bohr orbits where a_n ∝ 1/μ and ω ∝ μ.
+
+**The gap:** spec §6 (E) standing-wave resonance is what selects which orbit radii are stable (quantization). It is implemented for the *free electron* orbit (the 5.62-revolution result) but NOT yet for atomic COM orbits. To predict the actual Rydberg shift, we need to identify which atomic-scale orbit radii are resonant with the medium's natural period — the smallest one being the n=1 Bohr orbit.
+
+**This is the next concrete sub-task for §8.1.** Once atomic quantization is implemented, the predicted ω_n / ω_1 ratios should match Rydberg's measured spectrum, and the D/H isotope shift should come out to +272 ppm rather than the current classical −136 ppm.
+
 ### 8.2 Multi-electron atoms
 
 One nucleon-core (or cluster) cannot tidally lock with multiple electrons — one hill, many valleys. The valleys distribute themselves across **equidistant orbital planes** around the core.
