@@ -55,8 +55,10 @@ The medium is the only fundamental thing. Every subsequent layer is a pattern of
 A neutrino is a 1D propagating strain pulse:
 
 - Carries a ± slope along its length (one end compressed, the other stretched).
-- Translates at c at 45° relative to its own intrinsic axis.
+- Translates at c at **exactly 45°** relative to its own intrinsic axis. **45° is the uniquely stable balanced angle**: at 45°, the velocity has equal projection along the axis and perpendicular to it (equal partition between "along-axis" and "around-axis" motion). Any other angle is unbalanced and the medium's response forces the vector back to 45°. This is the spatial-medium analogue of null worldlines in Minkowski spacetime, where 45° is the unique angle where time- and space-components are equal-magnitude.
 - The axis is per-particle; each neutrino carries its own.
+- In 3D, the 45° constraint defines a *cone* of allowed velocity directions around the axis (continuous U(1) freedom). The cone surface IS the dynamics manifold; no other configurations are physically accessible. Any rule that would deflect a vector off the 45° cone is forbidden.
+- In 2D, the cone collapses to 4 discrete velocity directions (the projections of the 3D cone onto a plane). This explains why 2D simulation gives only (±s, ±s) and cannot reproduce 2D orbits — see Path C v1/v2 findings.
 - Possesses a small effective mass via E/c² of its strain content (consistent with measured tiny but nonzero neutrino mass).
 
 **Dynamics rule (load-bearing):** Vectors never reorient. When two neutrinos would overlap a coordinate, the medium displaces their *positions* to resolve the conflict; each neutrino keeps flying straight in its original direction. All curvature, orbit, and rotation in higher layers is an *emergent macroscopic pattern* from repeated displacements, not a continuous redirection of any individual vector.
@@ -229,7 +231,7 @@ Per §2 methodology: gaps must be closed by direct derivation, not by introducin
 These are normal foundational-theory questions, not blocking v1:
 
 - **Origin of the medium itself.** Posited as primitive; what gives K its value is not addressed.
-- **Why the 45° angle.** Posited as the natural neutrino angle; not derived from deeper principles.
+- **Why the 45° angle is uniquely stable.** Posited and physically motivated (equal partition between along-axis and around-axis motion = balance), but not derived from deeper principles such as a stiffness tensor structure. Path B should produce this from K and the medium's symmetry.
 - **Why each neutrino carries its own intrinsic axis.** Posited; mechanism not explained.
 
 ---
