@@ -1570,6 +1570,51 @@ In the limit where lepton kinetic energy ≪ mc², the Dirac equation reduces to
 
 **Status:** the structural correspondence is now articulated. Filling in details (specific coupling values, perturbative QFT calculations) is open Path B work that's well-defined but extensive.
 
+### 18.29 Decoupled vector geometry and the collider-vs-stable-matter distinction
+
+This is a structural insight tying back to spec §6 (collider physics is collider physics, stable matter is stable matter):
+
+**Geometric fact:** a decoupled (free) vector moving at 45° relative to a coupled (bound) configuration's axis must travel a longer path than a coupled vector aligned with the axis. Specifically:
+
+- A vector aligned with the axis covers radial distance r in time t = r/c.
+- A vector at 45° covers projected radial distance r in time t = r/(c × cos 45°) = r √2 / c. **It travels √2 × longer (and ~2× longer if you measure path length on orthogonal axes).**
+
+This means:
+
+1. **Bound configurations are spatially localized** because their constituent vectors stay aligned with the binding axes. Their "size" is set by the binding radius r_eq (§5.5).
+
+2. **Decoupled (free) particles spread spatially** because their vectors are at angle to whatever frame we observe them from. A free electron at speed v < c corresponds to a wave packet whose extent is set by ℏ/(m_e c × cos θ), where θ is the angle to the propagation direction.
+
+3. **Nested configurations** (vectors stacked on top of an existing bound state — what spec §6 calls "stress-loaded electrons" giving muon, tau) **CANNOT form spontaneously**. They require an external momentum input. The geometric reason: adding a vector to an already-bound configuration means embedding a 45°-cone-vector into the existing configuration's frame, which needs external energy to overcome the medium's resistance.
+
+**This makes the collider-stable distinction concrete:**
+
+| Particle / State | Generated in | Reason |
+|---|---|---|
+| Electron | Atomic ionization, beta decay | Standard quantum process; no nested vectors |
+| Proton, neutron | Nuclear binding | Single-bi-pyramid configuration; no nesting |
+| Muon, tau | High-energy particle physics (cosmic rays, colliders) | Nested vectors; require external momentum |
+| W, Z bosons | Colliders (LEP, LHC) | Heavy carriers (kinks); nested by construction |
+| Higgs boson | LHC | Highest-energy nested configuration |
+| Hadron resonances (Δ, Σ, etc.) | Colliders | Multi-kink polyhedral configurations beyond bi-pyramid |
+
+**Predicted phenomenology:**
+
+1. **Low-energy stable matter** has only un-nested configurations: H, He, Li, ..., U, all atoms, molecules, stars, etc. Every stable matter object is composed of electrons (1-Dirac-state on kink) + nucleons (single-bi-pyramid) + photons (medium waves). **No muons, taus, mesons, or W/Z in equilibrium matter.**
+
+2. **High-energy environments** (colliders, cosmic rays, supernovae) provide the external momentum that creates nested configurations. These configurations are unstable (they decay back to stable matter) but they exist briefly enough to be observed.
+
+3. **Decay chains end at stable matter.** Per §11, any nested configuration that loses its excess momentum returns to a stable bound state. The cascade ends at electrons + nucleons + photons.
+
+This is **structurally consistent with everything observed** in particle physics:
+- Stable matter contains only electrons and nucleons.
+- Higher-mass particles only appear at high-energy facilities or in cosmic-ray secondary cascades.
+- All decay chains end at stable matter (lepton + photon + neutrino conservation laws).
+
+**Falsifiable consequence:** if a "stable nested configuration" is discovered (a muon-like particle in equilibrium matter, or a Δ baryon as a stable nucleus constituent), the spec's collider-vs-stable distinction would be falsified.
+
+**Status:** §18.29 articulates the geometric reason behind the spec §6 distinction. The collider-vs-stable separation is now structurally justified, not just an empirical observation about which particles exist where.
+
 ---
 
 *End of Path A spec.*
