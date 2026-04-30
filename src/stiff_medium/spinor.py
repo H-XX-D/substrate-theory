@@ -71,6 +71,35 @@ def slope_sign(azimuth: float) -> int:
     return 1 if int(psi // np.pi) % 2 == 0 else -1
 
 
+def mobius_state_returned(azimuth_unwrapped: float, atol: float = 1e-6) -> bool:
+    """True when the Möbius state has fully returned to its original sign
+    (after a multiple of 720° = 4π in the cumulative cone azimuth).
+
+    Returns True if azimuth_unwrapped is approximately a multiple of 4π.
+    Use this to detect when a system has completed a fermionic 720° cycle.
+    """
+    if abs(azimuth_unwrapped) < atol:
+        return True
+    rem = abs(azimuth_unwrapped) % (4.0 * np.pi)
+    return rem < atol or (4.0 * np.pi - rem) < atol
+
+
+def mobius_state_flipped(azimuth_unwrapped: float, atol: float = 1e-6) -> bool:
+    """True when the Möbius state is fully sign-flipped from its original
+    (after an *odd* multiple of 360° = 2π in the cumulative cone azimuth).
+
+    A spin-½ system at this point has its 'wavefunction' equal to MINUS
+    the original — half-way through the 720° return cycle.
+    """
+    if abs(azimuth_unwrapped) < atol:
+        return False
+    cycles = azimuth_unwrapped / (2.0 * np.pi)
+    nearest_int = round(cycles)
+    if abs(cycles - nearest_int) > atol / (2.0 * np.pi):
+        return False
+    return nearest_int % 2 != 0
+
+
 def unwrap_azimuth_history(azimuths: Sequence[float]) -> np.ndarray:
     """Convert a sequence of azimuths in [0, 2π) into cumulative
     (unwrapped) azimuths so that the total winding is preserved.

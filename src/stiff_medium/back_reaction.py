@@ -76,24 +76,32 @@ def vverlet_step(
     axis_b: np.ndarray,
     dt: float,
     force_fn: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    mass_a: float = 1.0,
+    mass_b: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """One velocity-Verlet step with cone projection at every velocity update.
 
     Returns updated (pos_a, vel_a, pos_b, vel_b). Axes are unchanged.
+    `mass_a` and `mass_b` allow unequal-mass dynamics (acceleration = force/mass).
+    Defaults to equal unit masses (the original behavior).
     """
     f_a = force_fn(pos_a, pos_b)
     f_b = -f_a
+    a_a = f_a / mass_a
+    a_b = f_b / mass_b
 
-    half_vel_a = project_to_cone(vel_a + 0.5 * f_a * dt, axis_a)
-    half_vel_b = project_to_cone(vel_b + 0.5 * f_b * dt, axis_b)
+    half_vel_a = project_to_cone(vel_a + 0.5 * a_a * dt, axis_a)
+    half_vel_b = project_to_cone(vel_b + 0.5 * a_b * dt, axis_b)
 
     new_pos_a = pos_a + half_vel_a * dt
     new_pos_b = pos_b + half_vel_b * dt
 
     new_f_a = force_fn(new_pos_a, new_pos_b)
     new_f_b = -new_f_a
+    new_a_a = new_f_a / mass_a
+    new_a_b = new_f_b / mass_b
 
-    new_vel_a = project_to_cone(half_vel_a + 0.5 * new_f_a * dt, axis_a)
-    new_vel_b = project_to_cone(half_vel_b + 0.5 * new_f_b * dt, axis_b)
+    new_vel_a = project_to_cone(half_vel_a + 0.5 * new_a_a * dt, axis_a)
+    new_vel_b = project_to_cone(half_vel_b + 0.5 * new_a_b * dt, axis_b)
 
     return new_pos_a, new_vel_a, new_pos_b, new_vel_b

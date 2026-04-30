@@ -88,20 +88,28 @@ This mechanism was confirmed experimentally in Path C back-reaction tests: tange
 
 **Falsifiable prediction:** r_orbit and r_eq are both calculable from K (and the particle's strain content). The electron's measured rest mass and Compton wavelength must match m_e = E_orbit / c² and λ_e ~ r_orbit, where E_orbit is the bound orbit's energy. This is the first hard numerical checkpoint for Path B.
 
-### 5.5.1 Pauli exclusion is mechanical, not statistical
+### 5.5.1 Pauli-like exclusion is mechanical (precise scope)
 
-The repulsive branch (d < r_eq, "centrifugal push") of medium back-reaction is **mechanically equivalent to the Pauli exclusion principle**. Two identical strain patterns cannot occupy the same coordinate because the stiff medium pushes them apart — this is the same observable behavior as "no two identical fermions in the same quantum state."
+**What's mechanically established by §5.5's repulsive branch:**
 
-This decouples two things that are unified in the Standard Model:
+- Two strain patterns cannot coincide at the same coordinate. The medium's stiffness produces hard-core repulsion at d < r_eq.
+- This *is* sufficient to produce: shell filling in atoms (electrons can't pile into ground state), degeneracy pressure (neutron stars don't collapse below density set by r_eq), impenetrability of bulk matter (solids don't pass through each other).
 
-| | Standard Model | This theory |
+**What's NOT yet established — and where this differs from real Pauli:**
+
+- Real Pauli exclusion is *antisymmetry of identical fermions under particle exchange*: two electrons with *opposite* spin states CAN occupy the same spatial coordinate (in a covalent bond, an atomic orbital), while two electrons with *parallel* spin cannot. The exclusion is spin-state-dependent, not purely spatial.
+- Our §5.5 mechanical exclusion is **state-blind**: it just says "no two strain patterns in the same place," regardless of internal state. This is *like billiard balls*, not like fermions.
+- To recover the full Pauli principle, the theory needs to couple the exclusion rule to the Möbius internal twist (§13 gap #1) so that two same-twist particles repel via §5.5 but two opposite-twist particles can bind in the same coordinate. This coupling is **not yet specified in the spec**.
+
+**Honest framing:** the §5.5 mechanical exclusion is a *necessary but not sufficient* condition for real Pauli. The phenomenology that depends only on hard-core spatial exclusion (shell filling, degeneracy pressure) is reproduced. The phenomenology that depends on antisymmetry under exchange (specific bonding patterns, spin-singlet vs spin-triplet states) requires the spin-½ implementation that's still pending.
+
+| | Standard Model | This theory (current state) |
 |---|---|---|
-| Pauli exclusion | follows from spin-½ via spin-statistics theorem | follows from medium stiffness (§5.5 push) |
-| Spin-½ rotation property (720° return) | a postulate (or from Dirac equation) | follows from Möbius topology on the 45° cone (§13 gap #1) |
+| Hard-core spatial exclusion | derived from spin-statistics + antisymmetry | direct consequence of medium stiffness (§5.5) ✓ |
+| Spin-state-dependent exclusion | spin-singlet vs spin-triplet bonds, etc. | not yet specified — needs Möbius coupling to §5.5 |
+| Spin-½ rotation property (720° return) | a postulate, derived from Dirac equation | kinematic signature shown via cone-azimuth ratio, but Möbius topology not yet implemented in dynamics (§13 gap #1) |
 
-In this theory, **Pauli exclusion and spin-½ are separate consequences of separate mechanisms.** Atomic shell filling, neutron-star degeneracy pressure, and the impenetrability of solid matter all follow from medium stiffness alone — they do not require spin-½ as a precondition. Spin-½ is still required for other observables (the 720° rotation property, magnetic moments, total angular momentum addition in nucleons), but it is *not* the source of Pauli-like exclusion behavior in this framework.
-
-**Cleanest unified framing:** medium back-reaction is the single mechanism that produces *both* Pauli-like exclusion (§5.5 push) *and* Coulomb-like attraction/repulsion via slope complementarity (§10). One substrate response, two phenomena that are independent in the SM but unified here.
+**Cleanest framing of what's actually shown:** medium back-reaction produces *one specific subset* of Pauli-like behavior (mechanical hard-core exclusion). The full Pauli principle requires additional structure (Möbius topology and its coupling to the exclusion rule) that the spec describes but the simulation doesn't yet implement.
 
 ---
 
@@ -149,7 +157,7 @@ All stress-loaded states decay back to the electron, restoring the stable balanc
 
 ## 7. Nucleon (Layer 3)
 
-When two electron-orbit-patterns are forced to coexist in overlapping space, they rearrange — *positions only; underlying neutrino vectors preserved* — into a stable bi-pyramidal closure.
+When two electron-orbit-patterns are forced to coexist in overlapping space, the medium's back-reaction (§5.5) reorients their constituent velocities collectively into a stable bi-pyramidal closure. The cone constraint is preserved (§5: velocities stay on each particle's 45° cone), but the back-reaction reshapes which point on each cone the velocity occupies.
 
 ### Geometry
 
@@ -260,7 +268,7 @@ Coulomb's qualitative law follows directly. The 1/r² fall-off and absolute stre
 |---|---|
 | β-decay (n → p + e + ν̄) | Nucleon imbalance forces re-closure; leftover topology leaves as electron + antineutrino. |
 | Pair annihilation (e⁺e⁻ → 2γ) | Two complementary patterns merge and unconfine, releasing as oscillation. |
-| Lepton decay (μ → e + ν + ν̄) | Excited orbital mode relaxes to ground (electron) + two neutrinos carrying away leftover topology. |
+| Lepton decay (μ → e + ν + ν̄) | Stress-loaded electron sheds its vertex stress quanta (§6 lepton generations); the released energy carries away as electron + two neutrinos. |
 | Photon emission from atom | Excitation mode of orbital plane (or locked pair) decays; energy radiates as oscillation. |
 
 ---
@@ -282,7 +290,7 @@ The whole theory is plane-based:
 
 | # | Gap | Where to address |
 |---|---|---|
-| 1 | **Spin-½ via Möbius internal twist — STRUCTURALLY VALIDATED by simulation.** Empirical result (scripts/spin_check.py): in the back-reaction-driven bound orbit (Test 2's 5.62 revolutions), each neutrino's cone azimuth rotates by exactly **1.004 turns per orbital revolution** — geometrically required by the cone-projection dynamics. Under Möbius topology (slope flips per 2π of azimuth, returns at 4π), this gives slope-flip-per-orbit and 720° return — the kinematic signature of spin-½. Pauli exclusion is already in the model from §5.5.1 (mechanical, not statistical). Combined: model is structurally fermionic. Open work: full topological proof, Phase 2.2 fermionic breather mass calculation. | Empirical: complete. Analytical proof in Path B Phase 2 fermionic-breather work. |
+| 1 | **Spin-½ via Möbius internal twist — KINEMATIC SIGNATURE shown, dynamics not yet implemented.** Empirical result (scripts/spin_check.py): in the back-reaction-driven bound orbit (Test 2's 5.62 revolutions, second half of run), each neutrino's cone azimuth rotates by **1.004 turns per orbital revolution**. **Under the assumption of Möbius topology** (slope flips per 2π of azimuth, returns at 4π), this kinematic ratio gives slope-flip-per-orbit and 720°-return — the *signature* of spin-½. **What's NOT shown:** the Möbius topology itself is not implemented in the dynamics — it's still an interpretation layer applied to the cone-azimuth observable. To genuinely demonstrate spin-½, we'd need (a) the dynamics to *act* differently on Möbius-twist particles (e.g., two same-twist particles unable to bind, two opposite-twist able to), (b) a derivation of the Möbius topology from substrate principles. Both are open. **What IS shown:** the kinematic ratio is consistent with what spin-½ would require, and the geometry of cone-projected orbital motion produces this ratio inevitably. So Möbius-topology is a *possible* interpretation that the kinematics doesn't rule out, not a *demonstrated* feature. | Path B Phase 2: implement Möbius dynamics, derive topology from substrate, compute fermionic breather mass. |
 | 2 | **Lepton mass ratio numbers** (1 : 207 : 3477 for e : μ : τ). The structural prediction (3 generations max, leptons as stress-loaded electrons) is now in §6; only the numerical ratios remain open. | Path B numerical derivation. |
 | 3 | **Multi-electron shell filling** (2, 8, 18, 32). | Future work after hydrogen is solid. |
 | 4 | **Matter/antimatter asymmetry.** Slope orientation distinguishes electron from positron, but why the universe favors one is unaddressed. | Open. |
@@ -323,8 +331,8 @@ These are normal foundational-theory questions, not blocking v1:
 4. Heavier "electron-like" particles (muon, tau) are unstable stress-loaded electrons that decay back to electron + neutrinos. **Exactly 3 lepton generations exist** — the vertex cannot absorb a 4th stress quantum. Discovery of any 4th-generation charged lepton would falsify the model.
 5. Coulomb's qualitative law (opposite-attract, like-repel) is geometric, not fundamental.
 6. Medium back-reaction has the structure (push at d<r_eq, pull at d>r_eq, equilibrium at r_eq) — directly observed in Path C back-reaction simulation: tangential c-velocities at 1.5× r_eq produced 5.62 full orbits in 6000 steps with energy and cone constraint preserved.
-6a. **Pauli exclusion is mechanical, not statistical** — directly equivalent to the §5.5 repulsive branch. Spin-½ is required for the 720° property and magnetic moments, but *not* required for Pauli-like shell-filling behavior, which already follows from medium stiffness. This is a structural prediction that differs from the SM's spin-statistics derivation.
-6b. **Spin-½ emerges from cone-azimuth dynamics under Möbius topology.** Empirically observed in the back-reaction simulation: cone azimuth rotates by exactly 1 turn per orbital revolution (1.004 measured), giving slope-flip-per-orbit and 720° return — the kinematic signature of spin-½. The geometry of the 45° cone + medium back-reaction is *intrinsically fermionic*; we don't postulate spin-½, we derive it.
+6a. **Mechanical hard-core exclusion** (a *subset* of Pauli) — directly equivalent to the §5.5 repulsive branch. Reproduces shell filling, degeneracy pressure, bulk-matter impenetrability. Does NOT yet reproduce spin-state-dependent exclusion (singlet vs triplet); that needs Möbius coupling to be specified.
+6b. **Cone-azimuth ratio of 1 turn per orbital revolution** — empirically observed in the back-reaction simulation (1.004 measured over the second half of a 6000-step run). Geometrically inevitable given the cone constraint plus orbital motion. Under the assumption of Möbius topology, this kinematic ratio is the signature of spin-½. **Note:** Möbius is an interpretation overlay; the dynamics doesn't yet implement it, so this is "consistent with spin-½" not "demonstrated spin-½."
 
 **Pending Path B** (must match measurement directly per §2):
 
