@@ -88,6 +88,21 @@ This mechanism was confirmed experimentally in Path C back-reaction tests: tange
 
 **Falsifiable prediction:** r_orbit and r_eq are both calculable from K (and the particle's strain content). The electron's measured rest mass and Compton wavelength must match m_e = E_orbit / c² and λ_e ~ r_orbit, where E_orbit is the bound orbit's energy. This is the first hard numerical checkpoint for Path B.
 
+### 5.5.1 Pauli exclusion is mechanical, not statistical
+
+The repulsive branch (d < r_eq, "centrifugal push") of medium back-reaction is **mechanically equivalent to the Pauli exclusion principle**. Two identical strain patterns cannot occupy the same coordinate because the stiff medium pushes them apart — this is the same observable behavior as "no two identical fermions in the same quantum state."
+
+This decouples two things that are unified in the Standard Model:
+
+| | Standard Model | This theory |
+|---|---|---|
+| Pauli exclusion | follows from spin-½ via spin-statistics theorem | follows from medium stiffness (§5.5 push) |
+| Spin-½ rotation property (720° return) | a postulate (or from Dirac equation) | follows from Möbius topology on the 45° cone (§13 gap #1) |
+
+In this theory, **Pauli exclusion and spin-½ are separate consequences of separate mechanisms.** Atomic shell filling, neutron-star degeneracy pressure, and the impenetrability of solid matter all follow from medium stiffness alone — they do not require spin-½ as a precondition. Spin-½ is still required for other observables (the 720° rotation property, magnetic moments, total angular momentum addition in nucleons), but it is *not* the source of Pauli-like exclusion behavior in this framework.
+
+**Cleanest unified framing:** medium back-reaction is the single mechanism that produces *both* Pauli-like exclusion (§5.5 push) *and* Coulomb-like attraction/repulsion via slope complementarity (§10). One substrate response, two phenomena that are independent in the SM but unified here.
+
 ---
 
 ## 6. Electron (Layer 2)
@@ -141,7 +156,8 @@ When two electron-orbit-patterns are forced to coexist in overlapping space, the
 - A bi-pyramid is a 3D solid with planar triangular faces.
 - **Vertex count determines quark count.**
 - Each vertex carries a *fractional* share of the underlying slope total. Geometric closure forces fractional charges (1/3, 2/3) without postulating them — a structural prediction matching QCD's quark charge fractions.
-- **Proton vs. neutron** = orientation/symmetry of the same bi-pyramidal closure.
+- **Each vertex also carries spin-½** (per §13 gap #1, blocking). The bi-pyramid as a whole is spin-½ when two vertex spins align and one is anti-aligned (proton/neutron) and spin-3/2 when all three align (Δ baryon resonance). Without spin-½ at each vertex, this is a polyhedron with charge fractions, not a nucleon — see §13.
+- **Proton vs. neutron** = orientation/symmetry of the same bi-pyramidal closure, including the relative spin alignment of vertex pairs.
 
 ### Stability
 
@@ -238,7 +254,7 @@ The whole theory is plane-based:
 
 | # | Gap | Where to address |
 |---|---|---|
-| 1 | **Spin-1/2 mechanism.** Real electrons need 720° to return to initial state. Classical orbital models historically struggle here. | Path B; candidates: Möbius-like internal twist, Hestenes geometric-algebra spinors, half-winding strain. |
+| 1 | **Spin-½ mechanism (BLOCKING — promoted from deferred to load-bearing).** Real electrons, quarks, protons, neutrons are all spin-½ fermions. Without spin-½ in the model, §6's "electron" and §7's "nucleon" are at best geometric resemblances, not predictions of real particles. Pauli exclusion (which depends on fermionic statistics) is what makes atomic shells fill, nuclei bind, and matter not collapse — none of these emerge from a model without spin-½. **Leading candidate: Möbius-like internal twist on the 45° cone** — the neutrino's strain pattern flips sign under 360° rotation around its axis, returning only after 720°. Mathematically a half-integer winding in the cone's U(1). Naturally gives quark-vertex spin-½, electron spin-½, nucleon spin-½ via vertex-spin coupling. | Next session priority — blocks §6, §7, and the Phase 2.2 mass-ratio problem (bosonic breather predicts wrong m_e/m_ν). |
 | 2 | **Lepton mass ratio numbers** (1 : 207 : 3477 for e : μ : τ). The structural prediction (3 generations max, leptons as stress-loaded electrons) is now in §6; only the numerical ratios remain open. | Path B numerical derivation. |
 | 3 | **Multi-electron shell filling** (2, 8, 18, 32). | Future work after hydrogen is solid. |
 | 4 | **Matter/antimatter asymmetry.** Slope orientation distinguishes electron from positron, but why the universe favors one is unaddressed. | Open. |
@@ -279,6 +295,7 @@ These are normal foundational-theory questions, not blocking v1:
 4. Heavier "electron-like" particles (muon, tau) are unstable stress-loaded electrons that decay back to electron + neutrinos. **Exactly 3 lepton generations exist** — the vertex cannot absorb a 4th stress quantum. Discovery of any 4th-generation charged lepton would falsify the model.
 5. Coulomb's qualitative law (opposite-attract, like-repel) is geometric, not fundamental.
 6. Medium back-reaction has the structure (push at d<r_eq, pull at d>r_eq, equilibrium at r_eq) — directly observed in Path C back-reaction simulation: tangential c-velocities at 1.5× r_eq produced 5.62 full orbits in 6000 steps with energy and cone constraint preserved.
+6a. **Pauli exclusion is mechanical, not statistical** — directly equivalent to the §5.5 repulsive branch. Spin-½ is required for the 720° property and magnetic moments, but *not* required for Pauli-like shell-filling behavior, which already follows from medium stiffness. This is a structural prediction that differs from the SM's spin-statistics derivation.
 
 **Pending Path B** (must match measurement directly per §2):
 
