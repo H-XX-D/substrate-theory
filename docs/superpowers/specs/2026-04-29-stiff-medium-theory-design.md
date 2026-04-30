@@ -450,6 +450,8 @@ Each is bounded work (hours-to-days, not years). Closing all four would convert 
 - **Möbius origin via connection holonomy** — geometric derivation of half-integer winding from a U(1) bundle connection on the cone remains open. The structural commitment (§18.4) is in place; the derivation is differential geometry work.
 - **Madelung's rule** (sub-shell ordering, s-p-d-f filling order) — requires multi-electron atomic calculations beyond the structural 2n² shell pattern. Open.
 - **Specific element properties** (electronegativity, ionization values, bond energies for specific atoms) — require multi-particle dynamics simulation. Open.
+- **α derivation from substrate** — §18.9 establishes that α = COUPLING / (K ξ⁴) by dimensional analysis. Rigorous derivation of COUPLING from a specific Lagrangian remains open.
+- **H₂ and molecular bonding** — classical N-body cannot reproduce covalent bonds (wavefunction overlap is essential). Requires wavefunction-based simulation (variational, mean-field, or full QM). Bounded but substantive future work.
 
 ---
 
@@ -668,6 +670,84 @@ where F_pair is the two-body back-reaction (push at d<r_eq, pull at r_eq<d<r_cap
 **Implementation note:** the existing simulation modules (`back_reaction.py`, `mobius_dynamics.py`) handle 2-body. Extending to N-body requires looping over all pairs — straightforward but not yet implemented.
 
 **Status:** multi-particle dynamics has a derived structure (additive pairwise + small higher-order corrections). N-body simulation infrastructure is the next concrete coding task.
+
+**Update (Path C N-body work):** N-body atomic dynamics implemented in `src/stiff_medium/atomic.py` (`n_body_force`, `n_body_newton_step`, `n_body_force_with_pauli`, `n_body_step_with_pauli`). Helium ground-state simulation demonstrates 2 electrons binding to Z=2 nucleus. Lithium simulation demonstrates Pauli mechanism qualitatively (same-spin electron pushed out of n=1 shell). H₂ molecule simulation revealed a real limitation: classical N-body cannot capture wavefunction-overlap-based covalent bonding; this is a genuine limit of classical dynamics, not of the substrate theory. Wavefunction-based simulation (variational, mean-field) is required for chemistry-scale predictions.
+
+### 18.9 Fine-structure constant α — dimensional analysis route
+
+α = e²/(ℏc) in Gaussian units, dimensionless, ≈ 1/137.036.
+
+In our model, the relevant quantities are:
+- **COUPLING** (the prefactor in Coulomb attraction) — corresponds to e² (or k_e e², depending on convention).
+- **ℏ_natural** — the medium's natural action quantum.
+- **c = √(K/ρ)** — the medium's natural wave speed.
+
+For ℏ_natural, dimensional analysis: action has units [energy × time] = [mass × length² / time]. From substrate primitives:
+
+```
+[ρ] = [mass / length³]
+[c] = [length / time]
+[ξ] = [length]
+```
+
+The unique combination giving units of action is **ℏ_natural = ρ c ξ⁴**. (Other combinations like ρ ξ²/c have wrong dimensions.)
+
+For α to come out dimensionless and matching 1/137:
+
+```
+α = COUPLING / (ℏ_natural × c) = COUPLING / (ρ c² ξ⁴) = COUPLING / (K ξ⁴)
+```
+
+Therefore: **COUPLING / (K ξ⁴) ≈ 1/137**.
+
+This is a **specific prediction**: in any Lagrangian that gives our model's dynamics, the effective Coulomb coupling between two electrons must equal K ξ⁴ / 137 (within order-1 factors). Future Path B work that derives COUPLING from a specific Lagrangian must produce this ratio.
+
+**Caveat:** this is dimensional analysis, not a derivation from primitives. It tells us *what relation must hold*, not *why*. The "why" — i.e., why α specifically equals ~1/137 — is one of physics' deepest mysteries (the SM doesn't derive it either; it's measured). Our model at minimum identifies which substrate combinations control α, which is more than the SM does.
+
+**Open:** rigorous derivation of COUPLING from a specific Lagrangian (sine-Gordon-on-cone? Skyrme?) and verification that the dimensionless ratio comes out at 1/137. This is concrete Path B Phase 2+ work.
+
+### 18.10 Möbius topology origin — connection holonomy on the U(1) cone bundle
+
+The 45° cone has a U(1) symmetry (azimuthal rotation around the axis). Strain fields on the cone are sections of a U(1) principal bundle — to specify them globally, we need a connection (a rule for parallel transport). The connection's *holonomy* around closed loops determines whether fields are bosonic (integer winding) or fermionic (half-integer winding).
+
+**The mathematics in brief:**
+
+A U(1) bundle E → M (where M is the base, here a disc whose boundary is the cone's azimuthal circle) is characterized by a connection 1-form A. For a loop γ in M, the holonomy is
+
+```
+hol(γ) = exp(i ∮_γ A)
+```
+
+For trivial holonomy (= 1 ∈ U(1)), the field is single-valued (integer winding, bosonic). For holonomy = −1 (i.e., e^{iπ}), the field flips sign around the loop — half-integer winding, fermionic.
+
+**The geometric content:**
+
+For the holonomy to be exactly −1 around the cone's azimuthal circle, the integral ∮ A must equal π (mod 2π). By Stokes' theorem, ∮ A = ∫_disc dA = ∫ F (the curvature 2-form's flux through the disc). So we need
+
+```
+∫_disc F = π    (or any odd multiple)
+```
+
+This is the condition that the disc bounded by the azimuthal circle carries a *half unit* of magnetic-like flux (in normalized units where one unit = 2π).
+
+**What this means physically in our model:**
+
+Each neutrino's intrinsic axis carries a "half-flux line" — a topological feature of the medium associated with the per-particle axis. When the velocity vector traverses the 45° cone (azimuthal rotation), it picks up a phase from this flux, with total holonomy −1 per cone traversal. After two traversals (4π), holonomy = +1, full return.
+
+This is **the geometric origin of Möbius half-integer winding**: the per-particle axis isn't just a direction; it's a half-flux carrier. The strain pattern is a section of the cone's U(1) bundle, and that bundle carries half-flux holonomy by construction.
+
+**Why "by construction" rather than derived from primitives:**
+
+The half-flux structure is what *makes* matter particles fermionic. In the SM, fermion fields are postulated to carry spin-½ (with the spin-statistics theorem connecting it to fermion statistics). In our model, the analog is: the per-particle axis carries half-flux. **Both are structural commitments** about what kind of field the matter sector is.
+
+What our model adds beyond the SM postulate: a clean *geometric* picture of where the half-integer comes from. It's not an arbitrary spin assignment; it's the holonomy of a connection on the cone's U(1) bundle. Different choices of connection would give different statistics; matter-as-we-observe-it picks the half-flux choice.
+
+**Open work:**
+- Specifying the connection 1-form A explicitly. The holonomy condition pins down A only up to gauge transformations; choosing a specific A is a structural choice.
+- Showing that the half-flux choice is physically preferred (e.g., by minimizing some action, or by being the unique stable configuration). Conjectured but not proven.
+- Connecting this to standard fermion-field theory: showing that a fermion field on the cone's half-flux bundle reproduces the Dirac equation in some limit.
+
+**Status:** §13 gap #1 entry on "Möbius topology origin" upgraded from "implemented but origin posited" to "implemented + geometric explanation in terms of half-flux holonomy on the U(1) cone bundle." Specific connection 1-form and Dirac-equation correspondence remain open.
 
 ---
 
