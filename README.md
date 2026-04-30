@@ -92,3 +92,51 @@ This is a **structural finding, not a simulation artifact**: under spec §5 (vec
 The cleanest move is option 1 (upgrade to 3D) since the spec already says the medium is 3D. The 2D simulation was a v1 simplification, and we now know it was a load-bearing simplification: it filtered out exactly the structure (3D orbital cone) the theory predicts.
 
 Per spec §2: this is *not* a falsification of the theory — the rules are working, and the limitation is the simulation's dimensionality, not the rules themselves. But the spec's claim that the electron is a 2D bound orbit needs to be tested in 3D before claiming victory.
+
+## Result of v3 experiment (3D simulation)
+
+Run on: 2026-04-29
+Five initial-condition configurations tested in 3D with Neutrino3D (per-particle axis + 45° cone constraint). Same parameters as v1/v2.
+
+### Outcome — 3D does *not* deliver 2D orbital rotation under bare displacement
+
+**Only one of five configurations produced any bound state.** The others failed because the chosen velocities never brought particles within R_OVERLAP=0.05 of each other.
+
+| Config | Description | Initial L (about COM) | Result |
+|---|---|---|---|
+| A | 2D-v1 analog: head-on x, both axes +z, shared +z drift | (0, 0, 0) | **1D bound** in rel-x at ~0.07; no rotation (0.00° angular drift across 8 bound samples) |
+| B | Zero z-drift: opposite axes, opposite v_z | (0, 2.83, 0) | No binding; min dist 2.83 (separated in z while approaching in x) |
+| C | Nonzero L_z via y-offset positions | (0, 0, 1.41) | No binding; min dist 2.00 (y-offset preserved, never approached) |
+| D | Tangential velocities | (0, 0, -2.83) | No binding; min dist 4.00 (no x-convergence) |
+| E | Oblique with y-offset | (0, 0, -1.5) | No binding; min dist 2.12 |
+
+### Interpretation: the bare displacement rule is geometrically narrow
+
+The displacement-only rule **only produces binding when the two particles' trajectories actively bring them close enough to overlap, repeatedly**. This requires:
+
+- A velocity component along the line connecting them (so they approach), AND
+- The component must persist (so they keep coming back after each push), AND
+- Other components must not drive them apart on subsequent crossings
+
+Most 3D initial conditions don't satisfy all three. Even Config C, with **nonzero angular momentum**, didn't bind — the y-offset in initial positions meant particles never got within R_OVERLAP, regardless of how much L_z they carried.
+
+**Critical implication:** **angular momentum at the start does NOT translate into orbital binding under bare displacement.** This contradicts a naive reading of "persistent linear c turning into angular momentum" — that turning requires a mechanism the current rule lacks.
+
+### What this tells us about the spec
+
+- **Spec §5 (displacement-only, vectors preserved) produces 1D bound states only in narrow geometries.** It does NOT produce 2D orbital rotation in any tested configuration, in 2D or 3D.
+- **Spec §6 (electron as 2D bound orbit sweeping a 3D cone) is NOT reachable from spec §5 alone.** Either:
+  1. The rule needs additional structure — e.g., **medium back-reaction** that creates an attractive (centripetal) component to hold particles in orbit, OR
+  2. The "orbit" in §6 should be reinterpreted as the 1D bound state we observe (which is *not* the conventional electron picture from QM), OR
+  3. A "bound state" requires more than 2 neutrinos cooperating, and the 2-particle test is the wrong unit (3+ particles might produce the cone via cooperative dynamics).
+- **The user's clarification** ("push is centrifugal, bind is persistent linear c turning into angular momentum") describes the *target* behavior, but the current rule doesn't produce it. The conversion of linear-c → angular-c needs an explicit mechanism the spec hasn't yet specified.
+
+### Path forward
+
+Per spec §2 (no correction loops): the right response is **direct revision of the spec**, not parameter tuning. Three candidates:
+
+1. **Add a "trapping" rule** — when particles persist near each other for some duration, the medium imposes a curvature on their trajectories. This would convert linear momentum to angular momentum directly (matching the user's language).
+2. **Add medium back-reaction** — the displacement rule already pushes apart; add a complementary attractive component when particles are between R_OVERLAP and some larger R_BOUND. This would give attractive + repulsive forces, like Lennard-Jones, producing real orbital binding.
+3. **Test 3+ particle systems** — maybe two-body binding is incomplete and three or four neutrinos (matching the bi-pyramid §7 picture) produce the orbital structure cooperatively.
+
+The simulation correctly enforced spec §5's "vectors never reorient" — and the result is honest. The spec's higher-level claims need to be updated to reflect that §5 alone is insufficient for §6.
