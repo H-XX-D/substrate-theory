@@ -1095,6 +1095,49 @@ This connects directly to spec §11 (conservation/decay): non-resonant patterns 
 
 **Status:** EM radiation reaction is the cleanest mechanism for §6 (E) standing-wave resonance to enforce orbit quantization in simulation. The implementation is phenomenological; deriving the precise form (Larmor with full retardation) from the Lagrangian §18.11 is open Path B work.
 
+### 18.20 EM as propagating field — coupling, propagation, resonant absorption
+
+Spec §11 says non-resonant patterns shed energy as EM. Spec §9 says photons are oscillation waves in the medium. **Combining these:**
+
+1. **Coupling to medium:** an accelerating charged particle (a strain pattern undergoing change) creates a *disturbance* in the medium's strain field — the disturbance has the same structure as a photon (§9).
+2. **Propagation:** the disturbance propagates outward at speed c through the substrate (linear wave propagation; §4 c² = K/ρ).
+3. **Resonant absorption at distant mass:** when the disturbance reaches a distant trapped pattern (= mass, §9), the distant pattern can absorb energy from the disturbance *if* their natural frequencies match. This is the resonant-absorption mechanism of standard spectroscopy.
+
+This unifies three pieces of the spec into a coherent picture:
+
+| Spec section | Role in EM transfer |
+|---|---|
+| §9: photons as waves in medium | The propagating disturbance IS a photon. |
+| §11: non-resonant decay sheds EM | Source mechanism: accelerating charges shed waves. |
+| §18.19: EM radiation reaction damps orbits | Reaction force on the source: it loses energy. |
+| §6 (E): standing-wave resonance | Sink mechanism: distant mass absorbs at its natural frequency. |
+
+**Energy conservation through the medium:**
+
+Source energy + medium wave energy + absorber energy = constant.
+
+The "EM damping" of §18.19 is the SOURCE leg of this equation. The energy doesn't vanish — it propagates outward as a wave, eventually reaching a distant trapped pattern that resonates and absorbs.
+
+**Predicted phenomena that follow:**
+
+1. **Emission spectra:** a transition between two bound orbits (n_initial → n_final) emits a photon at frequency ω = (E_final − E_initial)/ℏ. Identifies with Bohr's correspondence principle. ω is set by the medium's resonance condition (§6 (E)).
+
+2. **Absorption spectra:** the same transition energies can be absorbed if the photon's frequency matches. Resonant condition: ω_photon = ω_transition.
+
+3. **Selection rules:** transitions are allowed if the photon's polarization (the direction of medium oscillation) couples to the orbital structure. In standard QM, the dipole approximation gives Δℓ = ±1 selection rule. In our model, the corresponding rule comes from the geometry of the orbital plane vs the photon's polarization direction.
+
+4. **Two-atom coupling:** an excited atom can transfer energy to a distant atom in a related state, mediated by the EM field. Real example: dipole-dipole coupling in molecules, fluorescence resonance energy transfer (FRET).
+
+**Implementation route:**
+
+A minimal simulation:
+- 1D grid representing the medium.
+- Field φ(x, t) on the grid evolves per ∂²φ/∂t² = c² ∂²φ/∂x².
+- Charged particles at positions x_i source the field (δ-function source ∝ acceleration, or oscillating dipole approximation).
+- Distant particles feel the field gradient; their orbits respond.
+
+This is open work — straightforward extension of the existing simulation, but adds field tracking. Status: spec §18.20 articulates the framework; simulation implementation is bounded next-step work.
+
 ---
 
 *End of Path A spec.*
