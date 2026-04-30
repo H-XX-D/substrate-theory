@@ -63,3 +63,32 @@ This is not yet the **2D orbital cone** the spec §6 expects for a true electron
 1. Initial conditions with zero net momentum: e.g., A at (-2, 0) velocity (s, s), B at (2, 0) velocity (-s, -s). Test whether 2D circulation emerges.
 2. Parameter sweep over R_OVERLAP and PUSH at fixed c, dt: check whether the bound state survives or degrades, and whether the orbit radius depends predictably on these (as A+E in spec §6 predicts).
 3. Run longer (10⁵ steps) and check for slow drift, dissipation, or eventual unbinding.
+
+## Result of v2 experiment (zero net momentum)
+
+Run on: 2026-04-29
+Initial conditions: A at (-2, -2) heading NE (s, s); B at (2, 2) heading SW (-s, -s). Center of mass at origin, zero net momentum. 2000 steps, otherwise same parameters as v1.
+
+### Outcome
+
+Bound state first detected at step 307 (essentially the same step as v1 once the diagonal geometry is accounted for) and persisted through all 2000 steps. Final relative distance: 0.057.
+
+**Relative-position angle: locked at 45° throughout. Spread across 21 samples after binding: 0.00 degrees.** The relative-position vector (B − A) does not rotate. The bound state is a 1D oscillation along the approach diagonal, with zero 2D orbital character.
+
+### Interpretation: 2D orbits are geometrically unreachable in 2D under the 45° constraint
+
+In 2D, the only allowed velocity vectors are (±s, ±s) — four discrete directions at 45° to the axes. For zero net momentum, the two particles' velocities must be exactly antiparallel (v_B = −v_A). Antiparallel head-on approach geometrically forces a 1D oscillation along the line of approach — there is no velocity component perpendicular to that line, and the displacement rule cannot manufacture one (vectors never reorient, per spec §5).
+
+This is a **structural finding, not a simulation artifact**: under spec §5 (vectors preserved) plus the 45° quantization, **a 2D orbit is mathematically impossible in 2D simulation**, regardless of initial position or parameter choice.
+
+### What this means for the spec
+
+- **Spec §5 (displacement rule, vectors preserved) is again validated for binding.** The bound state is even tighter and more persistent than v1.
+- **Spec §6 (electron as a 2D bound orbit sweeping a 3D cone) is NOT achievable in 2D.** It requires either:
+  1. **3D simulation** — in 3D, "45° to one axis" specifies a *cone* of directions (a continuous U(1) family), giving the velocity components needed for tangential orbital motion. This is the cleanest path forward and matches the spec's "rotation sweeps a 3D cone" language.
+  2. **Revise the 45° constraint** — allow more discrete velocity directions in 2D, or relax to a continuum.
+  3. **Add structure beyond bare displacement** — e.g., medium back-reaction or wave emission that creates a centripetal effect.
+
+The cleanest move is option 1 (upgrade to 3D) since the spec already says the medium is 3D. The 2D simulation was a v1 simplification, and we now know it was a load-bearing simplification: it filtered out exactly the structure (3D orbital cone) the theory predicts.
+
+Per spec §2: this is *not* a falsification of the theory — the rules are working, and the limitation is the simulation's dimensionality, not the rules themselves. But the spec's claim that the electron is a 2D bound orbit needs to be tested in 3D before claiming victory.
