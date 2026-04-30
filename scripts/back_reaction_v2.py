@@ -1,25 +1,21 @@
 """Polished back-reaction simulation: velocity-Verlet integrator,
 45° cone projection after each step, longer runs.
 
-Cone projection:
-- Each particle has an intrinsic axis â.
-- After each velocity update, project the velocity back to the 45° cone:
-  v_new = (C/√2) * â + (C/√2) * unit_perp(v - (v·â)â).
-- This preserves the spec invariants: |v|=C and angle(v, â)=45°.
-- The medium back-reaction can only rotate the velocity around the cone
-  (change azimuth), not change its magnitude or cone-angle.
-
-Velocity-Verlet integrator: better energy behavior than Euler. The cone
-projection introduces some non-conservation but the impulsive
-back-reaction is replaced with a smoother centered-force evaluation.
+Uses the canonical implementations of project_to_cone, back_reaction_force,
+and vverlet_step from `stiff_medium.back_reaction` (which is tested).
 """
 
 import numpy as np
 
+from stiff_medium.neutrino import C
+from stiff_medium.back_reaction import (
+    back_reaction_force,
+    vverlet_step as _vverlet_step,
+)
+
 
 # Parameters (per spec §2: chosen once on physical grounds)
 DT = 0.005
-C = 1.0
 S = C / np.sqrt(2.0)
 
 R_OVERLAP = 0.05
@@ -30,67 +26,22 @@ K_PULL = 5.0
 N_STEPS = 6000
 
 
-def project_to_cone(v: np.ndarray, axis: np.ndarray) -> np.ndarray:
-    """Project a velocity vector onto the 45° cone around axis.
-
-    Result has magnitude C and angle 45° to axis. Azimuthal direction
-    (rotation around axis) is preserved from the input v's perpendicular
-    component. If v has no perpendicular component, an arbitrary
-    perpendicular is chosen.
-    """
-    v_along = float(np.dot(v, axis)) * axis
-    v_perp = v - v_along
-    perp_norm = float(np.linalg.norm(v_perp))
-    if perp_norm < 1e-9:
-        # Degenerate: pick an arbitrary perpendicular.
-        if abs(axis[0]) < 0.9:
-            ref = np.array([1.0, 0.0, 0.0])
-        else:
-            ref = np.array([0.0, 1.0, 0.0])
-        v_perp = ref - float(np.dot(ref, axis)) * axis
-        v_perp = v_perp / float(np.linalg.norm(v_perp))
-    else:
-        v_perp = v_perp / perp_norm
-    return S * axis + S * v_perp
-
-
 def back_reaction(pos_a: np.ndarray, pos_b: np.ndarray) -> np.ndarray:
-    """Force on A from B; F on B is -F on A. Spring around r_eq."""
-    diff = pos_b - pos_a
-    d = float(np.linalg.norm(diff))
-    if d > R_CAPTURE or d < 1e-12:
-        return np.zeros(3)
-    unit = diff / d
-    if d > R_EQ:
-        return K_PULL * (d - R_EQ) * unit  # attractive
-    else:
-        return K_PUSH * (R_EQ - d) * (-unit)  # repulsive
+    """Force on A from B (script-local closure over the module-level constants)."""
+    return back_reaction_force(
+        pos_a, pos_b,
+        r_eq=R_EQ, r_capture=R_CAPTURE,
+        k_push=K_PUSH, k_pull=K_PULL,
+    )
 
 
 def vverlet_step(state, axis_a, axis_b):
-    """One velocity-Verlet step with cone projection at each velocity update."""
+    """One velocity-Verlet step using the module's canonical implementation."""
     pos_a, vel_a, pos_b, vel_b = state
-
-    f_a = back_reaction(pos_a, pos_b)
-    f_b = -f_a
-
-    vel_a_half = vel_a + 0.5 * f_a * DT
-    vel_b_half = vel_b + 0.5 * f_b * DT
-    vel_a_half = project_to_cone(vel_a_half, axis_a)
-    vel_b_half = project_to_cone(vel_b_half, axis_b)
-
-    new_pos_a = pos_a + vel_a_half * DT
-    new_pos_b = pos_b + vel_b_half * DT
-
-    new_f_a = back_reaction(new_pos_a, new_pos_b)
-    new_f_b = -new_f_a
-
-    new_vel_a = vel_a_half + 0.5 * new_f_a * DT
-    new_vel_b = vel_b_half + 0.5 * new_f_b * DT
-    new_vel_a = project_to_cone(new_vel_a, axis_a)
-    new_vel_b = project_to_cone(new_vel_b, axis_b)
-
-    return (new_pos_a, new_vel_a, new_pos_b, new_vel_b)
+    return _vverlet_step(
+        pos_a, vel_a, axis_a, pos_b, vel_b, axis_b,
+        dt=DT, force_fn=back_reaction,
+    )
 
 
 def run(name, pos_a, vel_a, pos_b, vel_b, axis_a, axis_b, sample_steps=None):
