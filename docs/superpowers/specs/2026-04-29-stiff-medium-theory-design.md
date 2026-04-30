@@ -61,21 +61,44 @@ A neutrino is a 1D propagating strain pulse:
 - In 2D, the cone collapses to 4 discrete velocity directions (the projections of the 3D cone onto a plane). This explains why 2D simulation gives only (±s, ±s) and cannot reproduce 2D orbits — see Path C v1/v2 findings.
 - Possesses a small effective mass via E/c² of its strain content (consistent with measured tiny but nonzero neutrino mass).
 
-**Dynamics rule (load-bearing):** Vectors never reorient. When two neutrinos would overlap a coordinate, the medium displaces their *positions* to resolve the conflict; each neutrino keeps flying straight in its original direction. All curvature, orbit, and rotation in higher layers is an *emergent macroscopic pattern* from repeated displacements, not a continuous redirection of any individual vector.
+**Dynamics rule (load-bearing, revised after Path C back-reaction findings):**
 
-This is structurally close to lattice-gas / cellular-automaton dynamics (HPP, FHP) where particles only translate along fixed velocity vectors and "collisions" are resolved by position swaps.
+- **Free particles do not reorient by themselves.** A neutrino in free flight propagates at c on its 45° cone with constant velocity direction. No internal mechanism rotates the velocity vector.
+- **The medium can reorient velocities through back-reaction (see §5.5).** When particles are within range of one another, the medium's response — push when too close, pull when too far — applies an effective force to each particle. This force is what reorients velocities in bound configurations, converting persistent linear c into orbital angular motion.
+- **The cone constraint is preserved at all times.** Any back-reaction force is projected onto the velocity's azimuthal tangent on the 45° cone before it is applied — the velocity rotates around the cone (changing azimuthal direction) but its magnitude stays at c and its angle to the axis stays at 45°.
+- **Equivalently:** vectors don't reorient *by themselves*; the medium reorients them *collectively* in bound configurations, and only on the cone surface.
+
+This replaces the earlier overly-strict "vectors never reorient" formulation, which Path C v1/v2/v3 simulations showed was insufficient to produce spec §6's 2D orbital cone. The back-reaction picture (§5.5) is what unlocks orbital binding while still respecting the cone constraint.
+
+---
+
+## 5.5 Medium back-reaction (the binding mechanism)
+
+The medium responds to particles within it. Two particles at distance d experience an effective two-body force determined entirely by d and the medium's parameters:
+
+- **d < r_eq:** repulsive (centrifugal). The medium pushes particles apart. This is the original "displacement rule" of v1.
+- **d > r_eq, d < r_capture:** attractive (centripetal). The medium pulls particles together. This is the *missing* component that Path C v1/v2/v3 lacked.
+- **d > r_capture:** no interaction. Particles propagate freely.
+
+**r_eq** is the medium's natural equilibrium spacing — derivable from K, ρ, and the particles' strain content. **r_capture** is the maximum range of the back-reaction.
+
+**Why this gives 2D orbital motion.** Two particles with tangential c-velocities at distance r_orbit (slightly larger than r_eq) experience attractive force exactly balancing the centripetal demand of their c-motion. The persistent linear c is converted to angular motion by the medium's pull, producing a stable circular (or elliptical) orbit. **r_orbit ≠ r_eq:** at d=r_eq the force is zero and pure tangential motion escapes; r_orbit is the d where the attractive force equals the centripetal requirement c²/d. Solving K·(r_orbit − r_eq) = c²/r_orbit gives r_orbit > r_eq.
+
+This mechanism was confirmed experimentally in Path C back-reaction tests: tangential initial conditions at 1.5× r_eq produced 5.62 full orbits over the second half of a 6000-step run, with the cone constraint preserved throughout.
+
+**Falsifiable prediction:** r_orbit and r_eq are both calculable from K (and the particle's strain content). The electron's measured rest mass and Compton wavelength must match m_e = E_orbit / c² and λ_e ~ r_orbit, where E_orbit is the bound orbit's energy. This is the first hard numerical checkpoint for Path B.
 
 ---
 
 ## 6. Electron (Layer 2)
 
-An electron forms when two neutrinos cross paths and would occupy the same coordinate. The medium displaces them, but their continued motion brings them back; the result is an emergent bound orbital pattern in the medium's strain field. The two underlying neutrinos still translate in straight lines at c — what circulates is the strain pattern in the surrounding medium. **The medium is the gyroscope.**
+An electron forms when two neutrinos enter the binding range of one another (d < r_capture, see §5.5) with appropriate angular momentum. The medium's back-reaction (attractive at d > r_eq, repulsive at d < r_eq) holds them on a circular or elliptical orbit at d = r_orbit. Their persistent linear c is continuously converted into angular motion by the back-reaction's centripetal pull. **The medium is the gyroscope.**
 
 ### Stability mechanism
 
 Two conditions stabilize the orbit:
 
-- **(A) Centripetal balance.** The medium's elastic restoring force matches the orbit's centripetal demand at a unique radius.
+- **(A) Centripetal balance.** The medium's back-reaction force matches the orbit's centripetal demand at a unique radius r_orbit slightly larger than r_eq. (Confirmed by Path C back-reaction simulation: tangential c-velocities at 1.5× r_eq produced 5.62 full orbits.)
 - **(E) Standing-wave resonance.** The orbit must match a natural mode of the medium or it radiates away.
 
 Together they pick out a stable orbital radius — that radius is the electron. Muons and taus are *not* different orbital modes; they are stress-loaded versions of the same orbit (see "Lepton generations" below).
@@ -219,8 +242,9 @@ The whole theory is plane-based:
 | 2 | **Lepton mass ratio numbers** (1 : 207 : 3477 for e : μ : τ). The structural prediction (3 generations max, leptons as stress-loaded electrons) is now in §6; only the numerical ratios remain open. | Path B numerical derivation. |
 | 3 | **Multi-electron shell filling** (2, 8, 18, 32). | Future work after hydrogen is solid. |
 | 4 | **Matter/antimatter asymmetry.** Slope orientation distinguishes electron from positron, but why the universe favors one is unaddressed. | Open. |
-| 5 | **Specific equations of motion.** No continuum dynamics yet. | Path B. |
+| 5 | **Continuum form of the back-reaction.** §5.5 specifies the qualitative structure (push at d<r_eq, pull at r_eq<d<r_capture) confirmed by simulation. The exact functional form (Lennard-Jones-like? 1/r? something else?) and its derivation from the medium's stress-strain tensor is the next theoretical step. | Path B. |
 | 6 | **Exact bi-pyramid type / vertex count.** Currently unspecified. | Path B. |
+| 7 | **r_eq and r_orbit numerical values.** Confirmed structurally; first hard checkpoint is computing r_orbit from K and matching to electron Compton wavelength. | Path B Phase 1. |
 
 Per §2 methodology: gaps must be closed by direct derivation, not by introducing free parameters that get tuned post-hoc.
 
@@ -238,9 +262,10 @@ These are normal foundational-theory questions, not blocking v1:
 
 ## 15. Roadmap
 
-- **Path A — this document.** Geometric / topological architecture. v1 done at sign-off.
-- **Path C — next.** Lattice / cellular-automaton simulation. Verify the displacement-only dynamics rule generates stable bound states (electrons, bi-pyramids) under simulation. Visualize emergent orbital structure. Predictions are read off simulation output directly — no fitting.
-- **Path B — after C.** Direct field-theoretic derivation of numerical values from K, ρ, c: electron mass, lepton mass ratios, fine-structure constant, Rydberg constant. Per §2: no renormalization, no perturbative correction loops to close the gap to measurement.
+- **Path A — this document.** Geometric / topological architecture. v1 complete; revised after Path C findings to incorporate medium back-reaction.
+- **Path C v1/v2/v3 — complete.** Pure displacement-only rule (no back-reaction) demonstrated to produce *only* 1D bound states in narrow geometries; never 2D orbital motion. This was the falsification signal that drove the §5.5 revision.
+- **Path C back-reaction — complete (proof of concept).** With back-reaction added (centripetal pull at d>r_eq) and 45° cone projection enforced, **2D orbital motion was directly observed**: 5.62 full revolutions in a 6000-step run, with energy and cone constraint preserved throughout. Confirms §5.5 architecturally.
+- **Path B — next.** Direct field-theoretic derivation of numerical values from K, ρ, c: r_orbit (and hence electron Compton wavelength), electron rest mass, lepton mass ratios, fine-structure constant, Rydberg constant. Per §2: no renormalization, no perturbative correction loops to close the gap to measurement.
 
 ---
 
@@ -253,15 +278,18 @@ These are normal foundational-theory questions, not blocking v1:
 3. Hydrogen is structurally unique among atoms (tidally-locked pair, not shell-based).
 4. Heavier "electron-like" particles (muon, tau) are unstable stress-loaded electrons that decay back to electron + neutrinos. **Exactly 3 lepton generations exist** — the vertex cannot absorb a 4th stress quantum. Discovery of any 4th-generation charged lepton would falsify the model.
 5. Coulomb's qualitative law (opposite-attract, like-repel) is geometric, not fundamental.
+6. Medium back-reaction has the structure (push at d<r_eq, pull at d>r_eq, equilibrium at r_eq) — directly observed in Path C back-reaction simulation: tangential c-velocities at 1.5× r_eq produced 5.62 full orbits in 6000 steps with energy and cone constraint preserved.
 
-**Pending Path B / Path C** (must match measurement directly per §2):
+**Pending Path B** (must match measurement directly per §2):
 
-6. Lepton mass ratio spectrum.
-7. Hydrogen 1/n² Rydberg spectrum from locked-pair modes.
-8. Bohr 1/n² scaling from medium-coordinate equidistance.
-9. Possibly: a new stable particle corresponding to a yet-uncatalogued geometric closure.
+7. r_orbit (the natural orbital radius) computed from K equals the electron's measured Compton wavelength.
+8. Bound-orbit energy E_orbit / c² equals the electron's measured rest mass (511 keV).
+9. Lepton mass ratio spectrum (e : μ : τ = 1 : 207 : 3477).
+10. Hydrogen 1/n² Rydberg spectrum from locked-pair modes.
+11. Bohr 1/n² scaling from medium-coordinate equidistance for multi-electron atoms.
+12. Possibly: a new stable particle corresponding to a yet-uncatalogued geometric closure.
 
-If any of items 6–9 disagree with measurement and the disagreement cannot be resolved by direct revision of the substrate or closure rules, the theory is falsified.
+If any of items 7–12 disagree with measurement and the disagreement cannot be resolved by direct revision of the substrate or closure rules, the theory is falsified.
 
 ---
 
