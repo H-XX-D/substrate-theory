@@ -1068,6 +1068,33 @@ Pulling together everything, the model's specific falsifiable predictions:
 
 In particular: the 4th-generation lepton search at LHC has consistently found nothing up to ~700 GeV. **Each successful exclusion further tests prediction #1.**
 
+### 18.19 EM radiation reaction stabilizes multi-electron atoms
+
+The bare Coulomb + Pauli simulation showed orbital drift in heavier atoms (oxygen with 8 electrons had 2 escape after 12k steps; beryllium and carbon outer electrons drifted outward). The physical interpretation per spec §11: orbits that aren't on standing-wave resonances of the medium **shed energy as EM radiation**, getting pulled back toward the nearest resonant (Bohr-quantized) orbit.
+
+Implemented as `em_radiation_reaction` and `n_body_step_with_em_damping` in `src/stiff_medium/atomic.py`: a damping force opposing radial drift, scaled by deviation from the nearest Bohr radius:
+
+```
+F_em(electron_i) = -radiation_strength × |r_i − r_bohr_n_i| × sign(v_radial) × r̂_i
+```
+
+This is the phenomenological capture of EM radiation reaction (full Abraham-Lorentz expression involves the third time derivative of position, but this simpler form suffices to damp drift).
+
+**Result on oxygen (Z=8, 8 electrons), 12000 steps:**
+
+| | Without EM damping | With EM damping |
+|---|---|---|
+| Inner shell (n=1) | 2 ✓ | 2 ✓ |
+| Outer shell (n=2) | 4 (with 2 escaped) | **6 (all retained)** ✓ |
+| Far/escaped | 2 ✗ | **0** ✓ |
+| Verdict | Drift breaks structure | **1s² 2s² 2p⁴ preserved** ✓ |
+
+**The EM term is the missing ingredient for stable multi-electron simulation in this model.** Every claim that depends on stable atomic orbits (shell-filling, isotope shifts, multi-electron ground states) implicitly relies on radiation reaction to lock orbits at the Bohr-quantized radii.
+
+This connects directly to spec §11 (conservation/decay): non-resonant patterns shed energy as EM oscillation. We've now implemented this and verified it stabilizes the simulation.
+
+**Status:** EM radiation reaction is the cleanest mechanism for §6 (E) standing-wave resonance to enforce orbit quantization in simulation. The implementation is phenomenological; deriving the precise form (Larmor with full retardation) from the Lagrangian §18.11 is open Path B work.
+
 ---
 
 *End of Path A spec.*

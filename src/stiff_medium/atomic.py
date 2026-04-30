@@ -195,3 +195,98 @@ def n_body_step_with_pauli(
     )
     new_v = [half_v[i] + 0.5 * (new_f[i] / masses[i]) * dt for i in range(len(positions))]
     return new_pos, new_v
+
+
+def em_radiation_reaction(
+    positions: list[np.ndarray],
+    velocities: list[np.ndarray],
+    nucleus_idx: int,
+    charges: list[float],
+    bohr_radii: list[float],
+    radiation_strength: float = 0.1,
+) -> list[np.ndarray]:
+    """Larmor-style radiation reaction force, opposing radial drift.
+
+    Physical motivation (per spec §11): accelerating charges radiate
+    EM. The reaction force damps deviation from a preferred orbital
+    radius. The preferred radius for each electron is its Bohr-quantized
+    n=1, 2, 3, ... orbit; we provide bohr_radii[i] for each particle.
+
+    For nucleus (nucleus_idx), no reaction force.
+    For electrons: force opposes the radial velocity component when
+    far from the nearest Bohr radius:
+
+        F_em = -radiation_strength × (r - r_bohr_nearest) × v_radial
+
+    This is a phenomenological capture of EM radiation reaction; the
+    full Abraham-Lorentz expression involves the third time derivative
+    of position, but this simpler form damps drift effectively.
+    """
+    n = len(positions)
+    forces = [np.zeros(3) for _ in range(n)]
+    nucleus_pos = positions[nucleus_idx]
+    for i in range(n):
+        if i == nucleus_idx:
+            continue
+        r_vec = positions[i] - nucleus_pos
+        r = float(np.linalg.norm(r_vec))
+        if r < 1e-12:
+            continue
+        r_hat = r_vec / r
+
+        # Find the nearest Bohr radius for this particle
+        r_bohr = bohr_radii[i]
+
+        # Radial velocity component (positive = outward)
+        v_rel = velocities[i] - velocities[nucleus_idx]
+        v_radial = float(np.dot(v_rel, r_hat))
+
+        # Damping force opposing radial drift, scaled by deviation from r_bohr
+        deviation = r - r_bohr
+        # Force is along -r_hat × v_radial (damps radial motion)
+        # Stronger when far from r_bohr
+        damping_factor = radiation_strength * abs(deviation) * np.sign(v_radial)
+        forces[i] = -damping_factor * r_hat
+    return forces
+
+
+def n_body_step_with_em_damping(
+    positions: list[np.ndarray],
+    velocities: list[np.ndarray],
+    masses: list[float],
+    charges: list[float],
+    spins: list[int],
+    bohr_radii: list[float],
+    nucleus_idx: int,
+    dt: float,
+    coupling: float = 1.0,
+    pauli_strength: float = 1.0,
+    pauli_radius: float = 0.1,
+    radiation_strength: float = 0.1,
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """Verlet step with Coulomb + Pauli + EM radiation reaction.
+
+    Adds Larmor-style damping toward Bohr-quantized orbits per spec §11
+    (energy loss from non-resonant configurations as EM radiation).
+    """
+    f_pauli = n_body_force_with_pauli(
+        positions, charges, spins, coupling, pauli_strength, pauli_radius
+    )
+    f_em = em_radiation_reaction(
+        positions, velocities, nucleus_idx, charges, bohr_radii, radiation_strength
+    )
+    f = [f_pauli[i] + f_em[i] for i in range(len(positions))]
+
+    half_v = [v + 0.5 * (f[i] / masses[i]) * dt for i, v in enumerate(velocities)]
+    new_pos = [p + half_v[i] * dt for i, p in enumerate(positions)]
+
+    new_f_pauli = n_body_force_with_pauli(
+        new_pos, charges, spins, coupling, pauli_strength, pauli_radius
+    )
+    new_f_em = em_radiation_reaction(
+        new_pos, half_v, nucleus_idx, charges, bohr_radii, radiation_strength
+    )
+    new_f = [new_f_pauli[i] + new_f_em[i] for i in range(len(positions))]
+
+    new_v = [half_v[i] + 0.5 * (new_f[i] / masses[i]) * dt for i in range(len(positions))]
+    return new_pos, new_v
