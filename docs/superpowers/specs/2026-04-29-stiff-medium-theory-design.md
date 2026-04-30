@@ -767,6 +767,50 @@ What our model adds beyond the SM postulate: a clean *geometric* picture of wher
 
 **Status:** §13 gap #1 entry on "Möbius topology origin" upgraded from "implemented but origin posited" to "implemented + geometric explanation in terms of half-flux holonomy on the U(1) cone bundle." Specific connection 1-form and Dirac-equation correspondence remain open.
 
+### 18.11 Candidate Lagrangian — concrete starting point for Path B
+
+To unify the open derivations (m_e from K/ρ/ξ, α from substrate, fermionic breather mass), commit to a specific Lagrangian. The minimal candidate combining all spec ingredients:
+
+```
+ℒ = ½ ρ (∂_t φ)² − ½ K |∇φ|² − (K/ξ²)(1 − cos φ)              [scalar sine-Gordon: substrate]
+   + ψ̄ (i ℏ γ^μ ∂_μ − g φ) ψ                                   [fermion + Yukawa coupling]
+   + ½ A_μ A^μ × half-flux constraint on cone azimuth          [Möbius topology via U(1) bundle]
+```
+
+Where:
+- **φ(x, t)**: scalar strain field of the medium. Substrate sector.
+- **ψ(x, t)**: fermion field. The "electron" identifies with a localized state of ψ.
+- **g**: Yukawa coupling between strain and fermion. Has dimensions of inverse-length (in natural units).
+- **A_μ**: U(1) connection 1-form on the cone bundle, with half-flux holonomy (§18.10).
+- **K, ρ, ξ**: substrate primitives (§18.2).
+
+**What this Lagrangian commits to:**
+
+- Scalar sector is **sine-Gordon** in 3D. Justifies Phase 1.2's E_K = 8K/ξ kink mass.
+- Fermion sector has **Yukawa coupling g** between strain and matter — the simplest scalar-fermion coupling consistent with relativistic invariance.
+- Möbius topology is **enforced via a half-flux U(1) connection** — the half-integer winding is a property of the bundle, not the fields.
+
+**What still needs computing from this Lagrangian:**
+
+1. **Fermion zero-mode mass** (= electron rest mass): solve the Dirac equation in the kink background. Result should be m_e ∝ g × (kink amplitude factor). Match against observed m_e = 511 keV.
+
+2. **Effective Coulomb coupling** (= COUPLING in §18.9): integrate out high-frequency fermion modes around the kink to get an effective interaction between two zero-modes. Result should give COUPLING ∝ g²/(K ξ⁴) or similar. Match against α = COUPLING/(K ξ⁴) = 1/137.
+
+3. **Free neutrino mass**: depends on whether the "free neutrino" is the kink itself (mass 8ρξ) or a separate small-amplitude excitation (mass < 1 eV). The Lagrangian admits both interpretations; the physical identification fixes which.
+
+4. **Lepton mass spectrum**: muon and tau as 1 and 2 vertex-stress quanta on the kink. Requires solving the Dirac equation on excited kink states.
+
+5. **Bi-pyramid nucleon**: requires extending the field theory to handle three or four kinks bound in a 3D polyhedral configuration. More complex than the two-kink electron case.
+
+**Free parameters in this Lagrangian:**
+- K, ρ, ξ (substrate primitives, 3 numbers)
+- g (Yukawa coupling, 1 number)
+- The half-flux structure of the U(1) bundle (no continuous parameter, just a topological choice)
+
+**Total: 4 free parameters.** Significantly fewer than the SM's ~25. All other observables — m_e, α, lepton masses, Rydberg constant — should be derivable from these four.
+
+**Status:** §18.11 commits to a specific minimal Lagrangian. The Path B Phase 2+ work is now unambiguously specified: solve the Dirac equation in the sine-Gordon kink background, compute zero-mode mass and effective interactions, compare to measurement. This is 1–2 sessions of focused theoretical work with computer algebra (sympy or Mathematica), plus careful checking of the Jackiw-Rebbi-style results in 3D. Beyond session scope but well-defined.
+
 ---
 
 *End of Path A spec.*
