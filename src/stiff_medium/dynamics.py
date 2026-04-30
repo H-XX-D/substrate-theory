@@ -47,3 +47,26 @@ def displace(
     moved_a = Neutrino(position=a.position - shift, velocity=a.velocity.copy())
     moved_b = Neutrino(position=b.position + shift, velocity=b.velocity.copy())
     return moved_a, moved_b
+
+
+def step(
+    neutrinos: list[Neutrino],
+    dt: float,
+    r_overlap: float,
+    push: float,
+) -> list[Neutrino]:
+    """One simulation step: propagate all, then resolve pairwise overlaps.
+
+    Overlap resolution iterates pairwise (O(n²) — fine for small n; spec v1
+    only requires 2-particle experiments).
+    """
+    moved = [propagate(n, dt) for n in neutrinos]
+
+    # Resolve pairwise overlaps. Single pass is enough for n=2; for larger
+    # n, repeat until no overlaps remain (left for v2).
+    for i in range(len(moved)):
+        for j in range(i + 1, len(moved)):
+            if detect_overlap(moved[i], moved[j], r_overlap):
+                moved[i], moved[j] = displace(moved[i], moved[j], push)
+
+    return moved

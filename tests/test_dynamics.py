@@ -98,3 +98,42 @@ def test_displace_handles_coincident_positions_safely():
     assert np.all(np.isfinite(moved1.position))
     assert np.all(np.isfinite(moved2.position))
     assert not np.allclose(moved1.position, moved2.position)
+
+
+from stiff_medium.dynamics import step
+
+
+def test_step_propagates_isolated_neutrinos():
+    s = C / np.sqrt(2)
+    n1 = Neutrino(
+        position=np.array([0.0, 0.0]),
+        velocity=np.array([s, s]),
+    )
+    n2 = Neutrino(
+        position=np.array([10.0, 10.0]),
+        velocity=np.array([-s, -s]),
+    )
+    new_state = step([n1, n2], dt=1.0, r_overlap=0.1, push=0.1)
+    # Far apart, so they just propagate freely.
+    assert np.allclose(new_state[0].position, [s, s])
+    assert np.allclose(new_state[1].position, [10.0 - s, 10.0 - s])
+
+
+def test_step_displaces_overlapping_neutrinos():
+    s = C / np.sqrt(2)
+    # Place them so propagation will bring them within r_overlap.
+    n1 = Neutrino(
+        position=np.array([0.0, 0.0]),
+        velocity=np.array([s, s]),
+    )
+    n2 = Neutrino(
+        position=np.array([s * 1.0, s * 1.0]),  # right where n1 will be after dt=1
+        velocity=np.array([-s, -s]),
+    )
+    new_state = step([n1, n2], dt=1.0, r_overlap=0.5, push=0.2)
+    # After step, they should be > r_overlap apart and have unchanged velocities.
+    dist = float(np.linalg.norm(new_state[0].position - new_state[1].position))
+    assert np.allclose(new_state[0].velocity, n1.velocity)
+    assert np.allclose(new_state[1].velocity, n2.velocity)
+    # Displacement happened at least.
+    assert dist > 0.0
