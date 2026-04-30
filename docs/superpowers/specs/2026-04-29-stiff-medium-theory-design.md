@@ -50,23 +50,45 @@ The medium is the only fundamental thing. Every subsequent layer is a pattern of
 
 ---
 
-## 5. Neutrino (Layer 1)
+## 5. Layer 1 strain excitations: heavy carrier (kink) vs. light neutrino
 
-A neutrino is a 1D propagating strain pulse:
+**Important revision (per §18.22):** the spec's Layer 1 actually contains *two* distinct kinds of excitation, not one:
 
-- Carries a ± slope along its length (one end compressed, the other stretched).
-- Translates at c at **exactly 45°** relative to its own intrinsic axis. **45° is the uniquely stable balanced angle**: at 45°, the velocity has equal projection along the axis and perpendicular to it (equal partition between "along-axis" and "around-axis" motion). Any other angle is unbalanced and the medium's response forces the vector back to 45°. This is the spatial-medium analogue of null worldlines in Minkowski spacetime, where 45° is the unique angle where time- and space-components are equal-magnitude.
-- The axis is per-particle; each neutrino carries its own.
-- In 3D, the 45° constraint defines a *cone* of allowed velocity directions around the axis (continuous U(1) freedom). The cone surface IS the dynamics manifold; no other configurations are physically accessible. Any rule that would deflect a vector off the 45° cone is forbidden.
-- In 2D, the cone collapses to 4 discrete velocity directions (the projections of the 3D cone onto a plane). This explains why 2D simulation gives only (±s, ±s) and cannot reproduce 2D orbits — see Path C v1/v2 findings.
-- Possesses a small effective mass via E/c² of its strain content (consistent with measured tiny but nonzero neutrino mass).
+### 5A. Heavy carrier (sine-Gordon kink) — what the spec originally called "neutrino"
 
-**Dynamics rule (load-bearing, revised after Path C back-reaction findings):**
+A heavy strain excitation: localized topological soliton with full 4π winding of the medium's strain field.
 
-- **Free particles do not reorient by themselves.** A neutrino in free flight propagates at c on its 45° cone with constant velocity direction. No internal mechanism rotates the velocity vector.
-- **The medium can reorient velocities through back-reaction (see §5.5).** When particles are within range of one another, the medium's response — push when too close, pull when too far — applies an effective force to each particle. This force is what reorients velocities in bound configurations, converting persistent linear c into orbital angular motion.
-- **The cone constraint is preserved at all times.** Any back-reaction force is projected onto the velocity's azimuthal tangent on the 45° cone before it is applied — the velocity rotates around the cone (changing azimuthal direction) but its magnitude stays at c and its angle to the axis stays at 45°.
-- **Equivalently:** vectors don't reorient *by themselves*; the medium reorients them *collectively* in bound configurations, and only on the cone surface.
+- **Mass**: ~27 GeV/c² when substrate parameters are consistent with observed α and m_e (from §18.21 numerical analysis). Comparable to W/Z bosons.
+- **Carries a ± slope along its length** (one end compressed, the other stretched).
+- **Translates at c at exactly 45°** relative to its own intrinsic axis. **45° is the uniquely stable balanced angle**: at 45°, the velocity has equal projection along the axis and perpendicular to it (equal partition between "along-axis" and "around-axis" motion). Any other angle is unbalanced and the medium's response forces the vector back to 45°. This is the spatial-medium analogue of null worldlines in Minkowski spacetime.
+- The axis is per-particle; each heavy carrier carries its own.
+- In 3D, the 45° constraint defines a *cone* of allowed velocity directions around the axis (continuous U(1) freedom).
+- In 2D, the cone collapses to 4 discrete velocity directions.
+
+**Identification with SM:** likely the W/Z weak-boson sector or other heavy carriers, given the mass scale (~27 GeV).
+
+### 5B. Light neutrino — small-amplitude (non-topological) oscillation
+
+A *separate* low-energy excitation of the same medium that is NOT a topological soliton:
+
+- **Mass**: < 1 eV/c² (consistent with cosmological bounds and beta-decay measurements).
+- **Origin**: small-amplitude perturbation of the strain field around the vacuum, with no winding number.
+- **Lagrangian**: small-amplitude limit of the §18.11 Lagrangian, where φ ≈ 0 and V(φ) ≈ K φ²/(2ξ²) — a free massive scalar field with mass m_ν_field ≈ ℏ/(c ξ_eff) for some effective ξ_eff that may differ from the kink's ξ.
+- **Identification with SM**: the SM neutrino (electron, muon, tau neutrino flavors).
+
+**Lagrangian sketch for 5B:** in the small-φ limit, ℒ ≈ ½ρ(∂_t φ)² − ½K(∂_x φ)² − (K/2 ξ²)φ². This is a Klein-Gordon equation with mass m = c/ξ. For the observed neutrino mass (~1 eV), ξ_neutrino ≈ ℏc/m_ν c² ~ 1.5 μm — far larger than the kink's ξ ~ 4 × 10⁻¹³ m. **The "light neutrino" lives at a longer length scale than the kink.**
+
+This dual interpretation is open: §18.22 articulated the issue and pointed the resolution. Specifying both Lagrangians (heavy carrier kink + light neutrino mode) consistently is one of the bounded open items in §18.23.
+
+### Common dynamical rule (load-bearing, applies to both 5A and 5B):
+
+**Free particles do not reorient by themselves.** A neutrino in free flight propagates at c on its 45° cone with constant velocity direction. No internal mechanism rotates the velocity vector.
+
+**The medium can reorient velocities through back-reaction (see §5.5).** When particles are within range of one another, the medium's response — push when too close, pull when too far — applies an effective force to each particle. This force is what reorients velocities in bound configurations, converting persistent linear c into orbital angular motion.
+
+**The cone constraint is preserved at all times.** Any back-reaction force is projected onto the velocity's azimuthal tangent on the 45° cone before it is applied — the velocity rotates around the cone (changing azimuthal direction) but its magnitude stays at c and its angle to the axis stays at 45°.
+
+**Equivalently:** vectors don't reorient *by themselves*; the medium reorients them *collectively* in bound configurations, and only on the cone surface.
 
 This replaces the earlier overly-strict "vectors never reorient" formulation, which Path C v1/v2/v3 simulations showed was insufficient to produce spec §6's 2D orbital cone. The back-reaction picture (§5.5) is what unlocks orbital binding while still respecting the cone constraint.
 
