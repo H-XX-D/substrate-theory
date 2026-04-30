@@ -76,3 +76,56 @@ def newton_step(
 def reduced_mass(m_light: float, m_heavy: float) -> float:
     """μ = m_light · m_heavy / (m_light + m_heavy)."""
     return m_light * m_heavy / (m_light + m_heavy)
+
+
+def n_body_force(
+    positions: list[np.ndarray],
+    charges: list[float],
+    coupling: float = 1.0,
+) -> list[np.ndarray]:
+    """Compute Coulomb-like force on each particle from all others.
+
+    Force on particle i = Σ_{j ≠ i} (charge_i × charge_j / d_ij²) × r̂_{j→i}
+    For attractive potential (opposite charges) this pulls particles together;
+    for like charges it pushes apart.
+
+    Per spec §18.8: multi-particle dynamics is additive pairwise at leading order.
+    """
+    n = len(positions)
+    forces = [np.zeros(3) for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            diff = positions[j] - positions[i]
+            d = float(np.linalg.norm(diff))
+            if d < 1e-12:
+                continue
+            unit = diff / d
+            # Force on i from j: attractive if charges opposite, repulsive if same
+            # F_on_i = +q_i q_j / d² × unit when opposite signs (attractive: toward j)
+            # F_on_i = -q_i q_j / d² × unit when same signs (repulsive: away from j)
+            # Equivalent: F_on_i = -(q_i q_j / d²) × unit always (sign self-corrects)
+            # No wait: for q_i=+1, q_j=-1, q_i q_j = -1, force should be attractive (+unit toward j),
+            #         so F = -q_i q_j/d² × unit = +1/d² × unit ✓
+            # For q_i=-1, q_j=-1, q_i q_j = +1, force should be repulsive (-unit away from j),
+            #         so F = -q_i q_j/d² × unit = -1/d² × unit ✓
+            f_on_i = -coupling * charges[i] * charges[j] / (d * d) * unit
+            forces[i] = forces[i] + f_on_i
+            forces[j] = forces[j] - f_on_i
+    return forces
+
+
+def n_body_newton_step(
+    positions: list[np.ndarray],
+    velocities: list[np.ndarray],
+    masses: list[float],
+    charges: list[float],
+    dt: float,
+    coupling: float = 1.0,
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """One velocity-Verlet step for N COM particles with pairwise Coulomb forces."""
+    f = n_body_force(positions, charges, coupling)
+    half_v = [v + 0.5 * (f[i] / masses[i]) * dt for i, v in enumerate(velocities)]
+    new_pos = [p + half_v[i] * dt for i, p in enumerate(positions)]
+    new_f = n_body_force(new_pos, charges, coupling)
+    new_v = [half_v[i] + 0.5 * (new_f[i] / masses[i]) * dt for i in range(len(positions))]
+    return new_pos, new_v
