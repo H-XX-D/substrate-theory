@@ -29,3 +29,7 @@ class Neutrino:
         speed = float(np.linalg.norm(self.velocity))
         if not np.isclose(speed, C):
             raise ValueError(f"velocity magnitude must be C={C}, got {speed}")
+        # Lock arrays read-only so callers can't mutate position/velocity in
+        # place — pairs with frozen=True (which only blocks attribute reassign).
+        self.position.setflags(write=False)
+        self.velocity.setflags(write=False)

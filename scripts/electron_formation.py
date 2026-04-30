@@ -39,9 +39,11 @@ def main() -> None:
         velocity=np.array([-s, s]),
     )
 
-    # These are the two simulation parameters: medium discretization
-    # (r_overlap) and stiffness response (push). Both should be small
-    # relative to the dynamics scale (c*dt).
+    # Two simulation parameters: medium discretization (r_overlap) and
+    # stiffness response (push). At ~5x c*dt = 5x 0.01 = 0.05 each, they
+    # are small compared to the simulation domain (~4 units) but a few
+    # times the per-step travel distance. Chosen once on physical grounds
+    # per spec §2 — not tuned to produce a desired outcome.
     DT = 0.01
     R_OVERLAP = 0.05
     PUSH = 0.05
