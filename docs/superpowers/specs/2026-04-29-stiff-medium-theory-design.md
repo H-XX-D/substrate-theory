@@ -1301,6 +1301,72 @@ This interpretation makes most predictions identical to standard QM (since both 
 
 4. **Single-photon experiments are about absorber statistics.** With low-intensity sources, the probability of a transition per unit time is low, giving discrete detection events whose rate scales with intensity. This recovers all single-photon statistics without needing photons to be particles.
 
+### 18.25 Electrons in bound states are standing waves — they don't "move"
+
+Extending §18.24 to the bound-state side: **electrons in atomic orbits are not point particles moving in classical trajectories. They are standing wave configurations of the medium, sustained by the §6 (A)+(E) stability mechanism.**
+
+**The standing-wave picture:**
+
+- An "electron in the n=1 orbit" is a self-consistent standing wave pattern of the medium's strain field, localized around the nucleus.
+- The pattern has discrete, quantized configurations (n=1, 2, 3, ...) corresponding to standing-wave modes that match the medium's resonant frequencies (per §6 (E)).
+- The pattern doesn't "rotate" or "orbit" in the classical sense. It's a static configuration of medium oscillation that has time-averaged angular momentum equivalent to the classical orbit's L.
+- **The electron is the pattern**, not a localized object inside the pattern.
+
+**Transitions are pattern reconfigurations, not particle jumps:**
+
+When an atom transitions from n=2 to n=1:
+- The medium's standing wave pattern reorganizes from the n=2 configuration to the n=1 configuration.
+- The energy difference (E_2 − E_1) is released as a *traveling* wave — the photon.
+- **Nothing physically moves between orbits.** The pattern shifts shape.
+
+This is the wave-mechanical version of Bohr's "stationary states + quantum jumps":
+
+| Bohr's language | Standing-wave reality (this spec) |
+|---|---|
+| "Electron in orbit n" | Standing wave configuration with quantum number n |
+| "Quantum jump" | Pattern reconfiguration |
+| "Energy emitted" | Traveling wave released during reconfiguration |
+| "Stationary state" | Time-independent standing-wave pattern |
+
+**What this dissolves at a deeper level than §18.24:**
+
+- §18.24 dissolved the photon's "particle" nature: photons are extended waves; "particle" is a measurement artifact.
+- §18.25 dissolves the electron's "particle" nature in the bound-state context: electrons-in-atoms aren't moving objects; they're standing-wave configurations of the medium.
+- **Both are waves all the way down.** Classical particle language is a useful coarse-graining for many calculations (Ehrenfest's theorem: expectation values follow classical trajectories), but the underlying ontology is pure wave dynamics in the substrate.
+
+**What about free electrons?**
+
+A free electron (not in a bound state) is a *propagating* wave packet — a localized pulse of strain in the medium that translates at some velocity. The §18.11 Lagrangian's Dirac field has both bound (standing-wave) solutions and unbound (propagating) solutions; both are wave configurations.
+
+**The "particle" appearance for free electrons:**
+- A free electron's wave packet has a small spread σ_x and corresponding σ_p.
+- Detection (e.g., a track in a cloud chamber) consists of localized energy deposits where the wave interacts with detector atoms.
+- Each interaction gives a localized "click" — what we call seeing a particle.
+- The wave between clicks is propagating; the localization is at the interaction events.
+
+**Falsifiable consequence:**
+
+If electrons in bound states are genuinely standing waves (not orbiting particles), then any experiment that probes "where the electron is at time t" should reveal that the electron has no well-defined position at the orbital scale — it has the spatial extent of the standing wave. **This is exactly what is observed in QM** (electron position has spread σ_x ~ a₀ in 1s state).
+
+The spec §6 (E) standing-wave picture is therefore *equivalent* to the QM probability-density-cloud picture, not in conflict with it. The spec just gives a substrate-mechanical ontological grounding for what QM treats as an abstract wavefunction.
+
+**Connecting to spec elsewhere:**
+
+- §6 (A)+(E) stability mechanism: A (centripetal balance) + E (standing-wave resonance) together pick out the standing-wave configurations. The "orbital radius" is the spatial scale of the standing wave.
+- §8.1a hierarchical atomic dynamics: at the atomic scale, the relevant objects are these standing-wave bound states. Their COMs follow Newton+Coulomb (the wavefunction's expectation value), but the patterns themselves are wave configurations.
+- §18.20 resonant absorption: the bound configuration absorbs a traveling wave at a resonant frequency, transitioning from one standing wave to another.
+
+**Cumulative wave-only ontology:**
+
+After §18.24 + §18.25, our spec asserts:
+- The substrate is a 3D stiff medium (§3).
+- All "particles" are wave configurations of this medium (standing for bound, propagating for free).
+- All "interactions" are wave-wave coupling (resonant absorption, parametric mixing, etc.).
+- All "measurements" are localized energy-transfer events between wave configurations.
+- **No fundamental point particles. No fundamental discreteness in the wave itself. Discreteness lives in the bound-state spectrum, set by §6 (E).**
+
+This is a clean wave-mechanical ontology, more rigorous than what most QM interpretations articulate explicitly.
+
 ---
 
 *End of Path A spec.*
