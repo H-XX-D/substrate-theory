@@ -1252,6 +1252,55 @@ After all the closures and the §18.22 resolution, the genuinely-open items, **e
 
 Each open item is concretely scoped — no "more theoretical breakthroughs needed." Just focused execution of well-defined calculations or simulations.
 
+### 18.24 Wave-particle duality dissolved — photons are extended waves; "particle" is a measurement artifact
+
+**Standard quantum mechanics presents wave-particle duality as a fundamental mystery:** light is sometimes wave (interference, diffraction), sometimes particle (photoelectric effect, single-photon counts), and reconciling these requires the Copenhagen interpretation, Many Worlds, etc.
+
+**In our model, this dissolves cleanly:**
+
+- **EM is always a wave in the medium** (§9, §18.20).
+- **What we measure as "pointlike" is the bound configuration of the detector**, not the wave itself.
+- **The detector is a localized atomic bound state** (per §6, §8). Resonant absorption (§18.20) converts wave energy into a discrete excitation of the bound state — at the detector's location.
+- **The "photon detection event" is the localized energy transfer**, not the arrival of a pointlike particle.
+
+**Why E = ℏω:**
+
+The energy quantization comes from the *absorber's* quantized transition energies, not from the wave being intrinsically discrete. A bound electron has discrete orbital states (per §6 (E) standing-wave resonance). It can transition between states at specific energy gaps ΔE = ℏω. The wave delivers exactly ΔE per absorption event because that's all the absorber can accept in a single resonant transition.
+
+In other words: **ℏ is the absorber's natural angular-momentum unit (per §18.21: ℏ = K ξ⁴/c, derived from substrate)**, not a property of the wave. The wave has continuous amplitude; the absorber has discrete energy levels. The intersection looks like "discrete photon energies."
+
+**Phenomena re-interpreted:**
+
+| Phenomenon | Standard QM | This spec |
+|---|---|---|
+| Photoelectric effect | "Photon particles" eject electrons above threshold | Wave delivers ℏω resonantly when ω matches the work function. Below threshold, no resonance, no transition, no electron emission. |
+| Compton scattering | Photon-electron collision conserves momentum | Wave scatters off bound electron; the electron recoils as the wave's amplitude is partially absorbed and re-emitted at new direction. The "particle collision" appearance is the recoil pattern. |
+| Single-photon counting | One photon = one click | Each click = one resonant transition in the detector's bound state. The wave's amplitude can be small (low intensity), but each transition still happens at a single discrete event. |
+| Double-slit interference | Wave goes through both, particle detection collapses on screen | Wave really goes through both slits (no collapse). Detection events occur at spots where wave amplitude is high (constructive interference). The interference pattern IS the wave; the "particle" pattern is what the array of detectors registers. |
+| Quantum eraser, delayed-choice | Spooky retrocausal | Wave moves at c through the medium and is acted on by all elements of the apparatus. Detection determines what energy transfer happens; no retrocausation needed because the wave was always there. |
+
+**This is fundamentally a Bohm-like / objective-wave interpretation**, but grounded in our specific substrate (the stiff medium of §3) rather than a featureless space. The wave is the real ontological entity; the "particle" is an emergent property of the measurement apparatus.
+
+**Connection to other spec sections:**
+- §6 (E) standing-wave resonance: this is what gives the absorber its discrete transition energies.
+- §8.1a Bohr-quantized orbits: the discrete levels of the absorber.
+- §18.20 resonant absorption: the mechanism for the localized energy transfer.
+- §11 conservation through topology + EM dissipation: ensures energy balance source ↔ field ↔ absorber.
+
+**Status:** §18.24 articulates the wave-particle interpretation. **It is structurally consistent with everything else in the spec.** The simulation in `scripts/em_propagation_test.py` already demonstrates the relevant mechanism: an extended wave that absorbs into a resonant bound configuration. That this picture also resolves the wave-particle duality "mystery" is a substantive bonus.
+
+**Falsifiable consequences:**
+
+This interpretation makes most predictions identical to standard QM (since both predict the same observable phenomena), but differs structurally in:
+
+1. **No genuine collapse.** The wave is never reduced to a point; the "particle" is a measurement event. Some interpretations of QM (like GRW) propose physical collapse mechanisms; this spec rejects them.
+
+2. **Polarization is wave property.** A photon's polarization is a property of the wave's oscillation direction in the medium, not an intrinsic spin label.
+
+3. **Group/phase velocity distinction matters.** Phenomena that depend on phase velocity (e.g., faster-than-c in some media) work classically here; quantum-mechanically would require careful analysis.
+
+4. **Single-photon experiments are about absorber statistics.** With low-intensity sources, the probability of a transition per unit time is low, giving discrete detection events whose rate scales with intensity. This recovers all single-photon statistics without needing photons to be particles.
+
 ---
 
 *End of Path A spec.*
