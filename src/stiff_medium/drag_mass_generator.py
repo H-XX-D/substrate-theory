@@ -53,6 +53,13 @@ from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
 from scipy.signal import find_peaks
 
+# Canonical cone-bouncing frequency (single source of truth).
+# See cone_bouncing_protocol.py for the derivation:
+#     ω_b² = (c/ξ)² + (γ/2ρ)²
+from src.stiff_medium.cone_bouncing_protocol import (
+    omega_b_canonical as _omega_b_canonical,
+)
+
 
 # ---------------------------------------------------------------------------
 # Physical constants (SI)
@@ -195,22 +202,31 @@ class DragMassGenerator:
         """
         Steady-state cone-bouncing frequency omega_b for the bound state.
 
-        omega_b = (c_eff / xi) * sqrt(1 + alpha_drag * gamma_tilde) .
+        Uses the CANONICAL formula derived in cone_bouncing_protocol.py
+        from the substrate Lagrangian:
 
-        For zero drag this is the pure Compton frequency c/xi; drag dresses
-        the bound mode by absorbing substrate fluctuations.
+            ω_b² = (c/ξ)² + (γ / 2ρ)²
+
+        For zero drag this is the pure Compton frequency c/ξ; drag adds
+        a positive shift Γ = γ/(2ρ) in quadrature, monotonically
+        increasing the bound-mode frequency.
+
+        The class works in a normalized regime where K/ρ is unity in
+        natural units (so c_eff = √(K/ρ) maps to C_LIGHT in SI).  We
+        call the canonical core with K_si, rho_si chosen so that
+        √(K_si/rho_si) = C_LIGHT and the SI γ rescaled the same way.
         """
         c = config or {}
         K     = c.get("K",     self.K)
         rho   = c.get("rho",   self.rho)
         xi    = c.get("xi",    self.xi)
-        c_eff = float(np.sqrt(K / rho)) * C_LIGHT  # report in physical units
-        # In the canonical anchor K/rho is unity in natural units => c_eff = c.
-        # Re-scale: omega_b carries dimensions Hz.
-        gt = self.gamma_tilde(c)
-        dressing = float(np.sqrt(1.0 + self.alpha_drag * gt))
-        omega_b = (C_LIGHT / xi) * dressing
-        return omega_b
+        gamma = c.get("gamma", self.gamma)
+        # Map (K, rho) in natural-unit-baseline to SI primitives that the
+        # canonical formula consumes, preserving c_eff = C_LIGHT * √(K/ρ).
+        rho_si = float(rho)
+        K_si   = float(rho_si * (C_LIGHT * np.sqrt(K / rho)) ** 2)
+        return _omega_b_canonical(K=K_si, rho=rho_si, xi=float(xi),
+                                  gamma=float(gamma))
 
     def rest_mass(
         self,

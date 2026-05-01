@@ -39,6 +39,16 @@ from typing import Tuple
 import numpy as np
 from numpy.typing import NDArray
 
+# Canonical cone-bouncing frequency formula (single source of truth).
+# This module already implements the canonical D-form
+#     ω_b² = ω₀² + (γ/2ρ)²
+# inline in `cone_bouncing_oscillation`; the import documents the link
+# to the protocol module and is available for callers that want the
+# closed-form rather than the FFT-measured value.
+from src.stiff_medium.cone_bouncing_protocol import (
+    omega_b_canonical as _omega_b_canonical,  # noqa: F401  (consistency)
+)
+
 
 # ---------------------------------------------------------------------------
 # 2D lattice substrate

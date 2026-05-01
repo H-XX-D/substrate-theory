@@ -59,6 +59,12 @@ from typing import Dict, Tuple
 
 import numpy as np
 
+from .b3_constants import (
+    n_M as _CANONICAL_N_M,
+    K_pair as _CANONICAL_K_PAIR,
+    K_rank as _CANONICAL_K_RANK,
+)
+
 
 # ---------------------------------------------------------------------------
 # Observed fermion masses (MeV unless noted). PDG 2024 central values.
@@ -107,9 +113,9 @@ class GenerationMap:
         Rank constant (B3: 5).
     """
 
-    n_M: int = 268
-    K_pair: int = 2
-    K_rank: int = 5
+    n_M: int = _CANONICAL_N_M     # 268
+    K_pair: int = _CANONICAL_K_PAIR  # 2
+    K_rank: int = _CANONICAL_K_RANK  # 5
 
     # ------------------------------------------------------------------ core
 

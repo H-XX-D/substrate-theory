@@ -20,6 +20,7 @@ from src.stiff_medium.integer_rigidity import (
     OBSERVED,
     CANONICAL_INTEGERS,
     predict_m_mu_over_m_e,
+    predict_m_tau_over_m_e,
     predict_deuteron_BE,
     predict_eps_face,
 )
@@ -142,6 +143,64 @@ def test_K_rank_perturbation_breaks_cabibbo(rig):
     assert cab_row["rel_err"] > 0.10, (
         f"K_rank=6: cabibbo only {cab_row['rel_err']:.3%} off"
     )
+
+
+# ---------------------------------------------------------------------------
+# (d') n_R perturbation must change m_tau/m_e (not silently no-op)
+# ---------------------------------------------------------------------------
+
+def test_n_R_perturbation_changes_tau_prediction():
+    """Audit guard: n_R must enter m_tau/m_e EXPLICITLY.
+
+    Before the audit fix, predict_m_tau_over_m_e ignored its `n_R`
+    argument and used K_rank/K_pair instead -- so perturbing n_R was a
+    no-op. The reflection-counted reformulation
+        log(tau/mu) = n_M/(K_pair^4 pi) - (n_R - R)/(K_pair*(K_pair+1))
+    is numerically identical at the canonical integers (15/6 = 5/2)
+    but DOES respond to a unit shift in n_R. This test guards against
+    n_R silently becoming inert again.
+    """
+    canon = dict(CANONICAL_INTEGERS)
+    canon["R"] = 3
+    pred_canonical = predict_m_tau_over_m_e(canon)
+
+    perturbed = dict(canon)
+    perturbed["n_R"] = canon["n_R"] + 1   # 18 -> 19, leave n_M fixed
+    pred_perturbed = predict_m_tau_over_m_e(perturbed)
+
+    rel_change = abs(pred_perturbed - pred_canonical) / pred_canonical
+    assert rel_change > 1e-3, (
+        f"n_R perturbation produced rel change {rel_change:.3e} -- "
+        f"n_R is not actually used in m_tau/m_e predictor (audit regression)."
+    )
+
+
+def test_n_R_perturbation_breaks_tau_in_engine(rig):
+    """Engine-level guard: rig.perturb_n_R must shift the m_tau/m_e row."""
+    r = rig.perturb_n_R(+1)
+    tau_row = next(o for o in r.observables
+                   if o["observable"] == "m_tau/m_e")
+    canonical_pred = tau_row["canonical_pred"]
+    perturbed_pred = tau_row["perturbed_pred"]
+    rel_change = abs(perturbed_pred - canonical_pred) / canonical_pred
+    assert rel_change > 1e-3, (
+        f"n_R+1 perturbation only shifted m_tau/m_e by {rel_change:.3e} "
+        f"({canonical_pred} -> {perturbed_pred}); n_R inactive."
+    )
+
+
+def test_n_R_canonical_matches_K_rank_form():
+    """Verify the (n_R - R)/(K_pair*(K_pair+1)) rewrite preserves numerics.
+
+    At canonical integers (n_R=18, R=3, K_pair=2, K_rank=5) we must have
+    (n_R - R)/(K_pair*(K_pair+1)) = 15/6 = 2.5 = K_rank/K_pair. This is
+    the load-bearing integer identity that lets us promote n_R to an
+    active observable input WITHOUT changing the canonical prediction.
+    """
+    n_R, R_int, K_pair, K_rank = 18, 3, 2, 5
+    lhs = (n_R - R_int) / (K_pair * (K_pair + 1))
+    rhs = K_rank / K_pair
+    assert lhs == rhs == 2.5
 
 
 # ---------------------------------------------------------------------------

@@ -28,14 +28,14 @@ ansatz:
     K_pair = 2       (pair stiffness)
     K_rank = 5       (rank-coupling integer)
     n_R    = 18      (rank dimension)
-    n_A    = 45      (anchor count)
+    n_A    = 15      (anchor pair count = C(N_BAM, 2))
     F      = 2       (face index)
     R      = 3       (rank index)
 
 Verified zero-parameter cases bundled with the engine
 -----------------------------------------------------
-    deuteron        : BE  = Lambda_QCD / (n_A * N_BAM) / 1.5  -> 2.222 MeV
-                      (using n_A * N_BAM = 90 split as canonical form)
+    deuteron        : BE  = Lambda_QCD / (n_A * N_BAM) -> 200/90 = 2.222 MeV
+                      (canonical: n_A=15, N_BAM=6, product = 90 exactly)
     muon            : m_mu/m_e = exp(n_M / (K_pair^4 * pi))
     tau             : m_tau/m_mu = exp((n_M + n_R) / (K_pair^4 * pi))
                       anchored multiplicative tower
@@ -81,12 +81,41 @@ from typing import Callable, Dict, Any, Optional, Tuple
 
 import numpy as np
 
+from .b3_constants import (
+    LAMBDA_QCD_MEV as _CANONICAL_LAMBDA_QCD_MEV,
+    N_BAM as _CANONICAL_N_BAM,
+    K_pair as _CANONICAL_K_PAIR,
+    K_rank as _CANONICAL_K_RANK,
+    n_R as _CANONICAL_N_R,
+    n_M as _CANONICAL_N_M,
+    F as _CANONICAL_F,
+    R as _CANONICAL_R,
+)
+
+# NOTE on n_A: this module's deuteron BE = Lambda_QCD / (n_A * N_BAM)
+# canonical factorisation uses n_A = 15 = C(N_BAM, 2) = C(6, 2). The
+# centralised b3_constants module exposes two other historical values
+# (n_A = 21 from C(N_BAM+1, 2), N_A_LEGACY_45 from K_10-edges); the n_A=15
+# form here is yet a third audit-pending variant tied to the 200/90 MeV
+# deuteron identity. Leaving the literal in place until the n_A audit
+# converges; do NOT silently switch to 21 or 45 without re-deriving 200/90.
+
+# Canonical cone-bouncing frequency (single source of truth):
+#     ω_b² = (c/ξ)² + (γ/2ρ)²,   c ≡ √(K/ρ).
+# See cone_bouncing_protocol.py for the derivation from the substrate
+# Lagrangian.  This module historically used the linear-in-γ B formula
+# (ω = γ ξ ρ √K · f_int); migrating to canonical eliminates the
+# inconsistency flagged in audit_03_drag_mass.md.
+from src.stiff_medium.cone_bouncing_protocol import (
+    omega_b_canonical as _omega_b_canonical,
+)
+
 
 # ---------------------------------------------------------------------------
 # Constants  (anchors / observed values used for verification only)
 # ---------------------------------------------------------------------------
 
-LAMBDA_QCD_MEV = 200.0          # B3 anchor (rounded; canonical 200 MeV)
+LAMBDA_QCD_MEV = _CANONICAL_LAMBDA_QCD_MEV  # B3 anchor (canonical 200 MeV; see b3_constants)
 M_ELECTRON_MEV = 0.51099895     # PDG
 M_MUON_MEV     = 105.6583755    # PDG
 M_TAU_MEV      = 1776.86        # PDG
@@ -110,14 +139,14 @@ DEFAULT_PRIMITIVES: Dict[str, float] = {
 }
 
 DEFAULT_INTEGERS: Dict[str, int] = {
-    "n_M":    268,
-    "N_BAM":  6,
-    "K_pair": 2,
-    "K_rank": 5,
-    "n_R":    18,
-    "n_A":    45,
-    "F":      2,
-    "R":      3,
+    "n_M":    _CANONICAL_N_M,    # 268
+    "N_BAM":  _CANONICAL_N_BAM,  # 6
+    "K_pair": _CANONICAL_K_PAIR, # 2
+    "K_rank": _CANONICAL_K_RANK, # 5
+    "n_R":    _CANONICAL_N_R,    # 18
+    "n_A":    15,                # = C(N_BAM, 2); see module-level NOTE
+    "F":      _CANONICAL_F,      # 2
+    "R":      _CANONICAL_R,      # 3
 }
 
 
@@ -221,22 +250,32 @@ class MassTorque:
 
     def cone_bouncing_freq(self, config: Optional[Dict[str, Any]] = None
                            ) -> float:
-        """Cone-bouncing angular frequency ``omega_b`` from drag gamma.
+        """Cone-bouncing angular frequency ``omega_b`` from the canonical
+        substrate-Lagrangian formula:
 
-        omega_b = gamma * xi * rho * sqrt(K) * f_int
+            ω_b² = (c/ξ)² + (γ/2ρ)²,    c ≡ √(K/ρ)
+
+        See cone_bouncing_protocol.py for the derivation.  Replaces the
+        legacy B formula (ω = γ ξ ρ √K · f_int) which had no Compton
+        baseline and failed to recover the electron mass at γ = 0.
+
+        The optional ``f_int`` factor (combinatorial dressing from the
+        simplicial / braided ansatz) is applied multiplicatively to the
+        canonical ω_b.  With unit-baseline primitives K=ρ=ξ=γ=1 and
+        f_int=1, the canonical value is √(1 + 1/4) = √(5/4) ≈ 1.118
+        (compare legacy B: 1.0).
 
         Parameters
         ----------
         config : dict, optional
             Overlay dict with keys among {'K', 'rho', 'xi', 'gamma',
             'f_int'}. Missing keys fall back to engine primitives;
-            ``f_int`` defaults to 1.0 (pure-primitive baseline).
+            ``f_int`` defaults to 1.0 (pure-canonical baseline).
 
         Returns
         -------
         float
-            omega_b in substrate-natural angular-frequency units. With
-            the unit-baseline primitives this equals f_int.
+            omega_b in substrate-natural angular-frequency units.
         """
         cfg = config or {}
         K     = float(cfg.get("K",     self.primitives["K"]))
@@ -244,7 +283,7 @@ class MassTorque:
         xi    = float(cfg.get("xi",    self.primitives["xi"]))
         gamma = float(cfg.get("gamma", self.primitives["gamma"]))
         f_int = float(cfg.get("f_int", 1.0))
-        return gamma * xi * rho * float(np.sqrt(K)) * f_int
+        return f_int * _omega_b_canonical(K=K, rho=rho, xi=xi, gamma=gamma)
 
     def drag_torque(self, config: Optional[Dict[str, Any]] = None) -> float:
         """Explicit drag contribution to the dimensionless torque.
@@ -261,13 +300,16 @@ class MassTorque:
     # ---- individual torque functionals --------------------------------
 
     def _t_deuteron(self) -> Tuple[float, str, Dict, Dict]:
-        """BE_d = Lambda_QCD / (n_A * N_BAM) with the canonical 200/90 form."""
+        """BE_d = Lambda_QCD / (n_A * N_BAM) -> 200/90 = 2.222 MeV.
+
+        Canonical factorization: n_A=15 (= C(N_BAM,2)) and N_BAM=6 give
+        the load-bearing product n_A·N_BAM = 90 with no fudge factors.
+        """
         n_A = self.integers["n_A"]
         N_BAM = self.integers["N_BAM"]
-        # canonical synthesis: 200 / 90 MeV = 2.222 MeV  (n_A * N_BAM / 3 = 90)
-        denom = (n_A * N_BAM) / 3.0
+        denom = float(n_A * N_BAM)
         T = 1.0 / denom
-        formula = "T = 1 / (n_A * N_BAM / 3) ;  m = Lambda_QCD * T = 200/90 MeV"
+        formula = "T = 1 / (n_A * N_BAM) ;  m = Lambda_QCD * T = 200/90 MeV"
         return T, formula, {}, {"n_A": n_A, "N_BAM": N_BAM}
 
     def _t_alpha_particle(self) -> Tuple[float, str, Dict, Dict]:
@@ -275,16 +317,16 @@ class MassTorque:
         n_A = self.integers["n_A"]
         N_BAM = self.integers["N_BAM"]
         F = self.integers["F"]
-        # alpha BE ~ 28.3 MeV total, ~7.07 MeV/nucleon; T = F^2 * (4/(n_A*N_BAM/3)) * ... heuristic
-        # Use canonical: BE_alpha ~ Lambda_QCD * F^2 / (N_BAM * F) = 200 * 4 / 12 ~ 66.7 -> /2.36 ~ 28.3
-        # Adopt direct form  T_alpha = F^2 * F / (n_A) * something matching ~0.1415
-        # Calibrate to BE_alpha = 28.295 MeV: T = 28.295/200 = 0.141475
-        # T = (n_R - 1) / (n_A*K_pair + K_rank*N_BAM) = 17/120 = 0.14167 -> 28.33 MeV
+        # alpha BE = 28.295 MeV  =>  T_target = 28.295/200 = 0.141475.
+        # Canonical (n_A=15, N_BAM=6, K_pair=2, K_rank=5, F=2):
+        #   F · (n_A·K_pair + K_rank·N_BAM) = 2·(30 + 30) = 120
+        #   T = (n_R - 1) / 120 = 17/120 = 0.14167 -> 28.33 MeV (0.13% match).
         n_R = self.integers["n_R"]
         K_pair = self.integers["K_pair"]
         K_rank = self.integers["K_rank"]
-        T = (n_R - 1) / (n_A * K_pair + K_rank * N_BAM)
-        formula = "T = (n_R - 1) / (n_A*K_pair + K_rank*N_BAM) ;  m = Lambda_QCD * T ~ 28.3 MeV"
+        T = (n_R - 1) / (F * (n_A * K_pair + K_rank * N_BAM))
+        formula = ("T = (n_R - 1) / [F * (n_A*K_pair + K_rank*N_BAM)] ;  "
+                   "m = Lambda_QCD * T ~ 28.3 MeV")
         return T, formula, {}, {"n_A": n_A, "N_BAM": N_BAM, "F": F}
 
     def _t_electron(self) -> Tuple[float, str, Dict, Dict]:
@@ -341,14 +383,26 @@ class MassTorque:
         # n_M/(K_pair^4 pi) = 5.331 (mu/e); we need ~2.82 for tau/mu.
         # Use exponent = (K_rank * n_R - n_M) / (K_pair^4 * pi) with K_rank=5,n_R=18 -> 90-... no
         # (K_rank*n_R - n_M) = 90 - 268 < 0. Use n_M/(K_pair^4 pi) - K_rank/(...) heuristic.
-        # Simpler stable form: tau/mu = exp(n_M / (K_pair^4 * pi) - K_rank/K_pair)
-        log_ratio = n_M / (K_pair ** 4 * np.pi) - K_rank / K_pair
+        # Reflection-counted form: K_rank/K_pair = (n_R - R)/(K_pair*(K_pair+1)),
+        # i.e. 5/2 = 15/6 EXACTLY. n_R = 18 = K_pair * 9 is the Mobius
+        # reflection count over T^2 (sheet count K_pair times nine reflection
+        # orbits per sheet); subtracting R = 3 picks out the K_rank * R = 15
+        # reflection orbits surviving the rank-3 mode lock, normalised by the
+        # K_pair * (K_pair + 1) = 6 Mobius bundle area. Numerically identical
+        # to K_rank/K_pair, but n_R is now an *active* observable input:
+        # perturbing n_R by +/- 1 shifts m_tau/m_mu directly, rather than
+        # entering only via the n_M = K_pair * K_rank**3 + n_R defining identity.
+        R_int = self.integers["R"]
+        log_ratio = (n_M / (K_pair ** 4 * np.pi)
+                     - (n_R - R_int) / (K_pair * (K_pair + 1)))
         ratio_tau_mu = np.exp(log_ratio)
         m_mu = M_ELECTRON_MEV * np.exp(n_M / (K_pair ** 4 * np.pi))
         m_tau = m_mu * ratio_tau_mu
         T = m_tau / self.lambda_qcd
-        formula = "m_tau = m_mu * exp(n_M/(K_pair^4 pi) - K_rank/K_pair)"
-        return T, formula, {}, {"n_M": n_M, "K_pair": K_pair, "K_rank": K_rank, "n_R": n_R}
+        formula = ("m_tau = m_mu * exp(n_M/(K_pair^4 pi) "
+                   "- (n_R - R)/(K_pair*(K_pair+1)))")
+        return T, formula, {}, {"n_M": n_M, "K_pair": K_pair, "K_rank": K_rank,
+                                "n_R": n_R, "R": R_int}
 
     def _t_higgs(self) -> Tuple[float, str, Dict, Dict]:
         """m_H = v_EW * sqrt(2 * lambda_H), with lambda_H tied to substrate

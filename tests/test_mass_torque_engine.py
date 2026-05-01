@@ -113,7 +113,7 @@ def test_predict_with_explicit_torque(engine):
 
 
 def test_predict_with_callable_formula(engine):
-    f = lambda prims, ints: 1.0 / (ints["n_A"] * ints["N_BAM"] / 3.0)
+    f = lambda prims, ints: 1.0 / (ints["n_A"] * ints["N_BAM"])
     r = engine.predict({"name": "deuteron_custom", "formula": f})
     assert math.isclose(r.value_mev, 200.0 / 90.0, rel_tol=1e-9)
 
@@ -170,19 +170,27 @@ def test_report_runs_and_returns_string(engine, capsys):
 # ---------------------------------------------------------------------------
 
 def test_cone_bouncing_freq_baseline(engine):
-    # With unit primitives and default f_int=1, omega_b should be 1.0
-    assert math.isclose(engine.cone_bouncing_freq(), 1.0, rel_tol=1e-12)
+    # Canonical:  ω_b² = (c/ξ)² + (γ/2ρ)²,  c = √(K/ρ).
+    # With unit primitives K=ρ=ξ=γ=1: ω_b = √(1 + 1/4) = √(5/4).
+    expected = math.sqrt(1.0 + 0.25)
+    assert math.isclose(engine.cone_bouncing_freq(), expected, rel_tol=1e-12)
 
 
 def test_cone_bouncing_freq_scales_with_drag(engine):
+    # Canonical adds γ in quadrature, not linearly.  At baseline γ=1 we
+    # have ω² = 1 + 1/4; doubling γ to 2 gives ω² = 1 + 1.  Both must
+    # exceed the bare Compton ω₀ = 1, and ω(γ=2) > ω(γ=1) (monotone).
     base = engine.cone_bouncing_freq()
     doubled = engine.cone_bouncing_freq({"gamma": 2.0})
-    assert math.isclose(doubled, 2.0 * base, rel_tol=1e-12)
+    assert doubled > base
+    assert math.isclose(doubled, math.sqrt(1.0 + 1.0), rel_tol=1e-12)
+    assert math.isclose(base, math.sqrt(1.0 + 0.25), rel_tol=1e-12)
 
 
 def test_cone_bouncing_freq_sqrt_K(engine):
+    # K=4 ⇒ c=√4=2, ω₀=2, Γ=1/2 ⇒ ω_b = √(4 + 1/4) = √4.25.
     val = engine.cone_bouncing_freq({"K": 4.0})
-    assert math.isclose(val, 2.0, rel_tol=1e-12)
+    assert math.isclose(val, math.sqrt(4.0 + 0.25), rel_tol=1e-12)
 
 
 def test_drag_torque_equals_omega_b(engine):

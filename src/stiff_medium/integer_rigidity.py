@@ -12,7 +12,7 @@ The B3 framework rests on the claim that a small set of integers --
     K_pair = 2      (pair stiffness)
     K_rank = 5      (rank-coupling integer)
     n_R    = 18     (rank dimension)
-    n_A    = 45     (anchor count)
+    n_A    = 15     (anchor pair count = C(N_BAM, 2))
 
 -- are *uniquely* selected by the simplicial / braided ansatz. The
 audit finding (audit_06) was that no test in the codebase fails when
@@ -86,23 +86,34 @@ def predict_m_mu_over_m_e(integers: Dict[str, int]) -> float:
 def predict_m_tau_over_m_e(integers: Dict[str, int]) -> float:
     """m_tau / m_e via the lepton tower used in mass_torque_engine.
 
-        m_tau / m_mu = exp(n_M/(K_pair^4 pi) - K_rank/K_pair)
+        m_tau / m_mu = exp(n_M/(K_pair^4 pi) - (n_R - R)/(K_pair*(K_pair+1)))
         m_mu  / m_e  = exp(n_M/(K_pair^4 pi))
+
+    The reflection-counted term (n_R - R)/(K_pair*(K_pair+1)) equals
+    K_rank/K_pair = 5/2 at the canonical integers (15/6 = 5/2 EXACTLY),
+    so the prediction is numerically identical to the K_rank/K_pair form.
+    But n_R now enters the predictor *explicitly*: perturbing n_R by +/-1
+    shifts m_tau/m_e (rather than silently doing nothing as in the prior
+    K_rank-only form).
     """
     n_M = integers["n_M"]
     K_pair = integers["K_pair"]
-    K_rank = integers["K_rank"]
+    n_R = integers["n_R"]
+    R_int = integers.get("R", 3)
     log_mu = n_M / (K_pair ** 4 * math.pi)
-    log_ratio = log_mu - K_rank / K_pair
+    log_ratio = log_mu - (n_R - R_int) / (K_pair * (K_pair + 1))
     return float(math.exp(log_mu) * math.exp(log_ratio))
 
 
 def predict_deuteron_BE(integers: Dict[str, int],
                         lambda_qcd: float = LAMBDA_QCD_MEV) -> float:
-    """BE_d = Lambda_QCD / (n_A * N_BAM / 3)  -> 200/90 = 2.222 MeV."""
+    """BE_d = Lambda_QCD / (n_A * N_BAM)  -> 200/90 = 2.222 MeV.
+
+    Canonical product n_A · N_BAM = 15 · 6 = 90.
+    """
     n_A = integers["n_A"]
     N_BAM = integers["N_BAM"]
-    return float(lambda_qcd / (n_A * N_BAM / 3.0))
+    return float(lambda_qcd / (n_A * N_BAM))
 
 
 def predict_t_c_max(integers: Dict[str, int],

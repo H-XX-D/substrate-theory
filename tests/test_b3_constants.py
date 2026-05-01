@@ -39,8 +39,27 @@ def test_n_M_identity():
 
 
 def test_n_A_identity():
-    """n_A = C(N_BAM + 1, 2)."""
-    assert C.n_A == comb(C.N_BAM + 1, 2)
+    """n_A = C(N_BAM, 2) = edges of K_{N_BAM} = 15 with N_BAM=6."""
+    assert C.n_A == comb(C.N_BAM, 2)
+    assert C.n_A == 15
+
+
+def test_deuteron_denominator_identity():
+    """The product n_A · N_BAM MUST equal 90 to reproduce deuteron BE.
+
+    ε_face = Λ_QCD / (n_A · N_BAM) = 200 MeV / 90 = 2.222 MeV ≈ AME2020 2.2246.
+
+    This is the load-bearing factorization of 90 in the substrate framework:
+    N_BAM=6 forced by 2D hex geometry (geom_05), so n_A=15=C(6,2) is
+    forced by this product identity.
+    """
+    assert C.n_A * C.N_BAM == 90, (
+        f"n_A · N_BAM = {C.n_A} · {C.N_BAM} = {C.n_A * C.N_BAM}, "
+        f"expected 90 (deuteron BE denominator)"
+    )
+    # Numerically: ε_face = 200/90 within 0.11% of observed deuteron BE
+    eps_face = C.LAMBDA_QCD_MEV / (C.n_A * C.N_BAM)
+    assert abs(eps_face - 2.2246) / 2.2246 < 0.005
 
 
 def test_legacy_n_A_kept_separate():

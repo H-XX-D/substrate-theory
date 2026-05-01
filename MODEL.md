@@ -403,7 +403,40 @@ inventory integers (no SM-style separate Yukawas/mixing matrices).
 
 **Total: 34 observables, all from one substrate ontology + B3 inventory.**
 
-### 5.2 Older core benchmark suite (pre-session)
+### 5.2 Substrate-distinctive predictions
+
+These are predictions where the substrate ontology forces an outcome that no parameter-tuned SM/ΛCDM analog naturally produces. They are the model's exposed surface — if any of these falsifies, the framework is in trouble.
+
+| Prediction | Substrate origin | Status | Falsifier |
+|---|---|---|---|
+| **T_c,max = 128.9 K** for Cu-O plane ambient-pressure SC | T_c,max = Λ_QCD / R, same R as baryon ε_align | Matches 31-year HBCCO record (134 K) at 4% | Any cuprate-class ambient-pressure T_c > ~135 K at substrate R-scale |
+| **Majorana neutrinos** | Forced by ν neutrality + Möbius Z/2 (no separate ν̄ field) | Predicted, not observed | KATRIN/LEGEND/nEXO Dirac-vs-Majorana discrimination |
+| **m_ββ ∈ [0, 5] meV** | Light NH-like ordering from m_1 = 2.26 meV + Σm_ν chain | Within reach of next-gen 0νββ | Detection above 5 meV → framework broken |
+| **m_DM = 27.5 GeV cube cell** | First excited cube-cell mode (8 quarks at vertices, parity-bipartite) | σ_SI ~ 10⁻¹³⁵ cm² — undetectable by direct detection | Any direct-detection signal that can't be explained by background |
+| **SH0ES side of Hubble tension** | g_† (SPARC) prefers H_0 = 73 (1.6% off) over Planck 67 (15% off); Σm_ν → ρ_Λ → H_0 = 71.92 km/s/Mpc | Internally consistent; favors SH0ES camp | Convergent CMB+BAO+SN consensus on H_0 < 70 |
+| **Density-perturbation 10¹³ gap** | Substrate-saturation cosmology resolves horizon + singularity but δρ/ρ amplitude is ~10¹³ too small | **Open — largest cosmology problem in B3** | Either find substrate amplification mechanism, or accept partial-replacement of inflation only |
+
+These are the model's "stick-out-the-neck" claims — included not because they are wins but because they sharply distinguish the substrate ontology from the SM/ΛCDM picture.
+
+### 5.3 Recently closed results (2026-04 / 2026-05)
+
+| Result | Substrate derivation | Match | Module |
+|---|---|---|---|
+| **σ = ½ for fermions** | Möbius Z/2 fixed point — only consistent half-integer assignment | FORCED (no fit) | `geom_08` |
+| **m_μ / m_e = exp(n_M / (K_pair⁴ · π))** | n_M = 268 (B3 inventory), K_pair⁴ = 16 (derived, not fit), one π factor | **0.009%** | `drag_mass_generator`, `b3_constants` |
+| **3 generations from D = 3** | Vertex-closure caps stress quanta at D; in 3D substrate this gives exactly 3 | FORCED | `primitive_anchoring` |
+| Equivalent compact form: m_μ/m_e = n_G(k_rank² − k_pair) = 207 | Same B3-integer mechanism, different presentation | 0.11% | `b3_constants` |
+
+### 5.4 Honest retractions
+
+Two earlier "wins" have been retracted on closer audit. Recording them here so the ledger stays clean.
+
+| Retracted claim | Why retracted | Replacement |
+|---|---|---|
+| Lieb-Oxford bound matched at 4% | The LO closure double-counted the same substrate constant on both sides of the comparison — it was a self-check, not an independent prediction. | None — claim withdrawn entirely. See `lieb_oxford_closure.py` for the audit trail. |
+| T_c,max ≈ 333 K (early ambient-SC speculation) | Used an unconstrained scale; not derivable from substrate primitives. | Replaced with B3-disciplined T_c,max = Λ_QCD / R = **128.9 K** (§5.2), which matches the actual ambient-pressure record at 4%. |
+
+### 5.5 Older core benchmark suite (pre-session)
 
 | Domain | # | Best agreement |
 |---|---|---|
@@ -564,7 +597,8 @@ The substrate parameters (K, ρ, ξ, ...) are properties of the eternal medium. 
 
 ## 8. Implementation
 
-The core dynamics is implemented in `src/stiff_medium/`:
+The core dynamics is implemented in `src/stiff_medium/` (126 modules total).
+Foundational primitives:
 
 - `neutrino.py`: 45° cone primitive
 - `three_d.py`: 3D propagation
@@ -575,6 +609,18 @@ The core dynamics is implemented in `src/stiff_medium/`:
 - `spinor.py`: Möbius spinor
 - `em_field.py` / `em_field_3d.py`: EM wave propagation
 - `detector.py`: bound-state tracking
+
+Recent (2026-04 / 2026-05) closure modules — central to the drag-mass + B3-integer programme:
+
+- `mass_torque_engine.py`: realizes the mass = Λ_QCD × T(configuration) torque axiom; common backbone for hadronic, leptonic, and EW masses.
+- `drag_mass_generator.py`: cone-bouncing drag mechanism producing m c² = ℏ ω_substrate / Q_particle (replaces Yukawa for every species).
+- `cone_bouncing_protocol.py`: canonical numerical protocol for the cone wobble + drag closure used by `drag_mass_generator`.
+- `primitive_anchoring.py`: pins each B3 integer (n_M, n_N, n_F, n_G, n_A, k_pair, k_edge, k_rank, etc.) to its substrate-geometric origin, blocking circular fits.
+- `b3_constants.py`: single source of truth for the 12 inventory integers + derived combinations (used by every closed-form predictor below).
+- `integer_rigidity.py`: rigidity-grid stress test — any single-integer perturbation breaks ≥3 unrelated observables (no overfitting).
+- `majorana_neutrino.py`: forced Majorana nature from neutrino neutrality + Möbius Z/2; derives m_ββ window.
+- `sigma_mnu_falsifier.py`: live falsifier against DESI DR2; B3 = 60.5 meV, status: passes ΛCDM bound (<64.2 meV), fails strict free-cosmology bound (<53 meV) by 14% — the most exposed live test.
+- `sparc_dynamics.py`: SPARC galaxy-rotation closure via g_† (links Hubble side and galactic side; favors SH0ES H_0 = 73).
 
 Demonstration scripts in `scripts/` cover:
 - Atomic structure (helium, lithium, beryllium, carbon, oxygen, magnesium)
@@ -596,19 +642,21 @@ Demonstration scripts in `scripts/` cover:
 
 ## 9. The encompassing Lagrangian
 
-**The current candidate model in one expression** (§18.45):
+**The current candidate model in one expression** (§18.45, post-2026-05-01 cleanup):
 
 ```
 ℒ_total = ½ρ(∂_tφ)² − ½K|∇φ|² − V(φ)              [substrate dynamics + saturation]
-       + ψ̄(iℏγ^μ(∂_μ + ieA_μ) − g_Y φ)ψ           [Dirac fermion + EM + Yukawa]
+       + ψ̄(iℏγ^μ(∂_μ + ieA_μ))ψ − γ_drag·ψ̄ψ      [Dirac fermion + EM + drag mass]
        − ¼ F_μν F^μν                              [bundle field strength]
        + λ(x)[(∂_zφ)² − |∇_⊥φ|²]                 [45° cone constraint]
 ```
 
-with potential:
+with potential (sine-Gordon × saturation only — no Mexican hat, no vacuum offset):
 ```
-V(φ) = (K/ξ²)(1 − cos(φ/ξ))/√(1 − (φ/φ_max)²) − ε_0
+V(φ) = (K/ξ²)(1 − cos(φ/ξ)) / √(1 − (φ/φ_max)²)
 ```
+
+**Dropped from earlier draft:** Yukawa coupling g_Y (replaced by drag γ via cone-bouncing, §2.5) and the ad-hoc vacuum offset ε_0 (cosmological constant now derives structurally from m_1⁴, see §6.2 entry 8). The potential has a single minimum at φ=0 with V(0)=0 — no fine-tuning, no degenerate vacuum, no CC catastrophe.
 
 and topological constraint:
 ```
@@ -640,28 +688,30 @@ where `g_cone` makes the 45° rule a null geometry, `D = d + ieA_EM + iA_Möbius
 | V(φ) vacuum offset | Cosmological constant, dark energy |
 | ψ̄ iℏγ^μ ∂_μ ψ | Dirac fermion (electron, leptons) |
 | ie A_μ in covariant deriv | Electromagnetic coupling, Coulomb |
-| g_Y φ ψ̄ψ Yukawa | Mass generation, gravity (charge-symmetric residual) |
+| γ_drag ψ̄ψ (cone-bouncing) | Mass generation; gravity = charge-symmetric residual of same drag |
 | F_μν F^μν | Photon kinetic term, EM wave equation |
 | λ(x)[(∂_zφ)² − ...] | 45° cone constraint |
 | Möbius half-flux holonomy | Spin-½, Pauli exclusion |
 | Multi-kink solutions | Dark matter, hadrons |
 
-### Free parameters (final count):
+### Free parameters (final count, consistent with §1.2 and §4.3):
 
 | Parameter | Symbol | What it sets |
 |---|---|---|
 | Stiffness | K | Substrate elastic modulus |
 | Density | ρ | Substrate inertia |
 | Length scale | ξ | Atomic Compton wavelength |
-| Saturation | φ_max | Black hole formation threshold |
-| Yukawa | g_Y | Electron rest mass |
-| Bundle charge | e | Fine-structure constant |
-| Vacuum offset | ε_0 | Cosmological constant |
-| Excitation 1 | Δ₁ | Muon mass |
-| Excitation 2 | Δ₂ | Tau mass |
-| Möbius topology | (binary) | Spin-½ statistics |
+| Drag coefficient | γ | Rest mass via cone-bouncing (replaces all Yukawas) |
+| Möbius topology | (binary) | Spin-½ statistics, two charge channels |
 
-**9 continuous + 1 binary = 10 parameters total.**
+**4 continuous + 1 binary = 5 parameters total.**
+
+Removed in 2026-05-01 cleanup:
+- **g_Y (Yukawa)** — replaced by γ via cone-bouncing (§2.5); m_e, m_μ, m_τ, quark masses, m_W, m_H all close from drag + B3 integers.
+- **ε_0 (vacuum offset)** — Λ derives from m_1⁴(1 + 1/n_N)² with m_1 = 2.26 meV (§6.2 #8).
+- **φ_max** — identified as substrate saturation scale ≡ v_EW; not a separate primitive.
+- **e (bundle charge)** — α derives in closed form from K_4 + Möbius + drag (0.004%); e is not a free input.
+- **Δ₁, Δ₂** — derived from B3 inventory integers via n_G, k_rank, k_pair, k_edge (§5.1, §6.0).
 
 Compare to standard: SM (~25) + ΛCDM (~6) + GR (~1) = ~30 parameters.
 
