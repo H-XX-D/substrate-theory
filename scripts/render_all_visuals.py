@@ -540,6 +540,42 @@ def render_nucleon_stacking() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# 14. 3-generation lepton/quark tower (geometry + ladder)
+# ---------------------------------------------------------------------------
+
+def render_generation_tower() -> list[str]:
+    """Produce 22_generation_tower.png and 23_lepton_quark_ladder.png.
+
+    22: 3D plot of three orthogonal K_4 cells -- one per substrate axis --
+        showing why D = 3 forces exactly 3 generations.
+    23: log-scale mass ladder for all 6 leptons + 6 quarks, with the
+        substrate generation jumps annotated.
+    """
+    from src.stiff_medium.generation_tower_visualizer import (
+        GenerationTowerGeometry, GenerationTowerSimulator,
+    )
+    out: list[str] = []
+
+    geom = GenerationTowerGeometry()
+    sim = GenerationTowerSimulator(geometry=geom)
+
+    # 22: 3D geometric tower
+    fig = plt.figure(figsize=(11, 9))
+    ax = fig.add_subplot(111, projection="3d")
+    sim.draw_geometric_tower(ax=ax)
+    fig.tight_layout()
+    out.append(save(fig, "22_generation_tower.png"))
+
+    # 23: lepton + quark mass ladder
+    fig, ax = plt.subplots(figsize=(11, 7))
+    sim.draw_full_ladder(ax=ax)
+    fig.tight_layout()
+    out.append(save(fig, "23_lepton_quark_ladder.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
 # 12. Substrate visualizer (existing module)
 # ---------------------------------------------------------------------------
 
@@ -554,6 +590,549 @@ def render_substrate_visualizer() -> list[str]:
                 out.extend(paths)
     except Exception as e:
         print(f"  substrate_visualizer: {e}")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 15. Möbius sheet-swap (Z/2 involution → particle/antiparticle, Majorana,
+#     σ = 1/2 fixed point, half-integer spin from double cover)
+# ---------------------------------------------------------------------------
+
+def render_mobius_sheet_swap() -> list[str]:
+    """Produce 24_mobius_sheet_swap.png and 25_majorana_visualization.png.
+
+    24: Möbius strip with the two sheets A/B coloured separately and an
+        explicit arrow indicating the Z/2 swap τ : (θ, s) → (θ, −s).
+    25: Side-by-side comparison of charged (electron, sheet A → B,
+        distinct antiparticle endpoint) vs neutral (neutrino, sheet
+        A = B, identical Majorana endpoint).
+    """
+    from src.stiff_medium.mobius_sheet_swap import (
+        SIGMA_MAX,
+        MobiusSheetGeometry,
+        SheetSwapSimulator,
+        default_charged,
+        default_neutral,
+        summary,
+    )
+
+    out: list[str] = []
+
+    geom = MobiusSheetGeometry(radius=1.0, width=0.5,
+                               n_theta=240, n_v=24)
+    sim = SheetSwapSimulator(geometry=geom, n_steps=240)
+
+    # ---- 24: Möbius strip with sheet labels A/B + swap arrow ----
+    fig = plt.figure(figsize=(12, 9))
+    ax = fig.add_subplot(111, projection="3d")
+    X, Y, Z = geom.surface_xyz()
+    sheet_color = geom.sheet_color_field()
+
+    # Two-sheet colouring: sheet A (v > 0) red, sheet B (v < 0) blue;
+    # the v = 0 core circle sits between them as the τ-fixed locus.
+    cmap = plt.get_cmap("coolwarm")
+    ax.plot_surface(
+        X, Y, Z,
+        facecolors=cmap(0.5 * sheet_color + 0.5),
+        rcount=24, ccount=120,
+        linewidth=0.0, antialiased=True, alpha=0.92, shade=True,
+    )
+
+    # Sheet A label (top of strip)
+    ax.text(1.55, 0.0, 0.55, "Sheet A  (s = +1)", color="darkred",
+            fontsize=12, fontweight="bold")
+    # Sheet B label (bottom of strip, on the Möbius-flipped side)
+    ax.text(1.55, 0.0, -0.55, "Sheet B  (s = −1)", color="darkblue",
+            fontsize=12, fontweight="bold")
+
+    # Z/2 swap arrow: from a point on sheet A across to the matching
+    # point on sheet B (vertical reflection through the v = 0 core).
+    a_xyz = (1.20, 0.05, 0.45)
+    b_xyz = (1.20, 0.05, -0.45)
+    ax.quiver(a_xyz[0], a_xyz[1], a_xyz[2],
+              b_xyz[0] - a_xyz[0], b_xyz[1] - a_xyz[1],
+              b_xyz[2] - a_xyz[2],
+              color="black", arrow_length_ratio=0.18, linewidth=2.5)
+    ax.quiver(b_xyz[0], b_xyz[1], b_xyz[2],
+              a_xyz[0] - b_xyz[0], a_xyz[1] - b_xyz[1],
+              a_xyz[2] - b_xyz[2],
+              color="black", arrow_length_ratio=0.18, linewidth=2.5)
+    ax.text(1.45, 0.05, 0.0, "τ : (θ, s) ↦ (θ, −s)",
+            color="black", fontsize=11, fontstyle="italic")
+
+    # Highlight the σ = 1/2 fixed circle (core of the strip, v = 0)
+    theta_circle = np.linspace(0.0, 2.0 * np.pi, 240)
+    ax.plot(np.cos(theta_circle), np.sin(theta_circle),
+            np.zeros_like(theta_circle),
+            color="goldenrod", linewidth=2.5, linestyle="--",
+            label="σ = 1/2 fixed circle  (τ-invariant)")
+
+    s = summary()
+    ax.set_title(
+        "Möbius bundle: two sheets A/B identified by Z/2 swap τ\n"
+        f"τ² = id ({s['involution_squared_is_identity']}),  "
+        f"holonomy(1 loop) = {s['double_cover_holonomy_one_loop']:+.0f},  "
+        f"spin = {s['spin_value']}",
+        fontsize=12,
+    )
+    ax.set_xlabel("x"); ax.set_ylabel("y"); ax.set_zlabel("z")
+    ax.legend(loc="upper left", fontsize=9)
+    ax.view_init(elev=24, azim=-58)
+    out.append(save(fig, "24_mobius_sheet_swap.png"))
+
+    # ---- 25: Majorana visualization — charged vs neutral side by side ----
+    demo = sim.demo_charged_vs_neutral(
+        charged=default_charged(),
+        neutral=default_neutral(),
+    )
+    fig = plt.figure(figsize=(15, 8))
+
+    # Left panel: electron — sheet A → sheet B, distinct antiparticle.
+    ax_left = fig.add_subplot(1, 2, 1, projection="3d")
+    Xc, Yc, Zc = geom.surface_xyz()
+    ax_left.plot_surface(
+        Xc, Yc, Zc,
+        facecolors=cmap(0.5 * sheet_color + 0.5),
+        rcount=24, ccount=120,
+        linewidth=0.0, antialiased=True, alpha=0.55, shade=True,
+    )
+
+    n_arc = 60
+    arc_theta = np.linspace(0.0, 2.0 * np.pi, n_arc)
+    # Trajectory of the charged excitation: starts on sheet A (v > 0)
+    # and after the loop emerges on sheet B (v < 0) of the same surface.
+    v_path_e = 0.35 * np.cos(arc_theta / 2.0)  # +0.35 → −0.35 across loop
+    Xe = (geom.radius + v_path_e * np.cos(arc_theta / 2.0)) * np.cos(arc_theta)
+    Ye = (geom.radius + v_path_e * np.cos(arc_theta / 2.0)) * np.sin(arc_theta)
+    Ze = v_path_e * np.sin(arc_theta / 2.0)
+    ax_left.plot(Xe, Ye, Ze, color="black", linewidth=3.0,
+                 label="electron trajectory")
+    ax_left.scatter([Xe[0]], [Ye[0]], [Ze[0]], color="darkred", s=160,
+                    edgecolors="black", linewidths=1.5,
+                    label="start: e⁻ on sheet A", zorder=5)
+    ax_left.scatter([Xe[-1]], [Ye[-1]], [Ze[-1]], color="darkblue", s=160,
+                    edgecolors="black", linewidths=1.5,
+                    label="end: e⁺ on sheet B", zorder=5)
+    end_e = demo["charged"]["end"]
+    ax_left.set_title(
+        "Charged: electron e⁻ → distinct antiparticle e⁺\n"
+        f"(charge {default_charged().charge:+.0f} → "
+        f"{end_e.charge:+.0f},  sheet A → B)",
+        fontsize=11,
+    )
+    ax_left.set_xlabel("x"); ax_left.set_ylabel("y"); ax_left.set_zlabel("z")
+    ax_left.legend(loc="upper left", fontsize=8)
+    ax_left.view_init(elev=24, azim=-60)
+
+    # Right panel: neutrino — Majorana fixed point on the v = 0 circle.
+    ax_right = fig.add_subplot(1, 2, 2, projection="3d")
+    ax_right.plot_surface(
+        Xc, Yc, Zc,
+        facecolors=cmap(0.5 * sheet_color + 0.5),
+        rcount=24, ccount=120,
+        linewidth=0.0, antialiased=True, alpha=0.55, shade=True,
+    )
+    # Neutrino trajectory: rides the v = 0 fixed circle.  The sheet
+    # swap is gauged out so start = end (Majorana ν = ν̄).
+    Xn = geom.radius * np.cos(arc_theta)
+    Yn = geom.radius * np.sin(arc_theta)
+    Zn = np.zeros_like(arc_theta)
+    ax_right.plot(Xn, Yn, Zn, color="goldenrod", linewidth=3.5,
+                  label="neutrino trajectory  (on fixed circle)")
+    ax_right.scatter([Xn[0]], [Yn[0]], [Zn[0]], color="darkgreen", s=160,
+                     edgecolors="black", linewidths=1.5,
+                     label="start: ν on fixed circle", zorder=5)
+    ax_right.scatter([Xn[-1]], [Yn[-1]], [Zn[-1]], color="darkgreen", s=200,
+                     edgecolors="black", linewidths=1.5, marker="X",
+                     label="end: ν̄ = ν  (same state)", zorder=5)
+    ax_right.set_title(
+        "Neutral: neutrino ν → identical Majorana fixed point\n"
+        f"(charge {default_neutral().charge:+.0f}  unchanged,  "
+        f"ν = ν̄;  is_majorana = {demo['neutral']['is_majorana']})",
+        fontsize=11,
+    )
+    ax_right.set_xlabel("x"); ax_right.set_ylabel("y"); ax_right.set_zlabel("z")
+    ax_right.legend(loc="upper left", fontsize=8)
+    ax_right.view_init(elev=24, azim=-60)
+
+    fig.suptitle(
+        "Möbius sheet-swap τ — charged sees the swap (e⁻ → e⁺), "
+        "neutral does not (ν = ν̄)\n"
+        f"σ ≤ 1/2 cap enforced  (cap = {SIGMA_MAX});  "
+        "spin-½ from (−1)^n holonomy of the double cover",
+        fontsize=12,
+    )
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
+    out.append(save(fig, "25_majorana_visualization.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 16. Saturation horizon: cone tilt + crack-tip + potential
+# ---------------------------------------------------------------------------
+
+def render_saturation_horizon() -> list[str]:
+    """Produce 26_horizon_cone_tilt.png and 27_horizon_potential.png.
+
+    26: Family of light cones at varying σ from 0 to 1/2, showing the
+        tilt grow continuously from 0° (vertical) to 90° (horizon).
+        Includes a panel of cone-tilt vs σ.
+    27: Substrate potential V(σ) showing the finite cap (sampled at
+        σ < 1/2) plus the crack-tip stress regularization (σ_LEFM
+        diverges, σ_capped = min(σ_LEFM, σ_max) is bounded).
+    """
+    from src.stiff_medium.saturation_horizon_geometry import (
+        SIGMA_MAX,
+        SaturationHorizonGeometry,
+        crack_stress_curve,
+        potential_curve,
+    )
+
+    out: list[str] = []
+    geom = SaturationHorizonGeometry()
+
+    # ---- 26: light cones tilting from 0° to 90° as σ → 1/2 ----
+    fig = plt.figure(figsize=(14, 6))
+    ax_cones = fig.add_subplot(1, 2, 1)
+    ax_curve = fig.add_subplot(1, 2, 2)
+
+    sigmas = np.array([0.0, 0.0625, 0.125, 0.25, 0.375, 0.49, 0.5])
+    half_h = 1.0
+    cmap = plt.cm.plasma(np.linspace(0.0, 0.95, len(sigmas)))
+
+    for i, (s, color) in enumerate(zip(sigmas, cmap)):
+        walls = geom.cone_walls(float(s), r0=float(i) * 2.5,
+                                t0=0.0, half_height=half_h)
+        # Future cone (upward): two walls
+        for side in ("right", "left"):
+            seg = walls[side]
+            ax_cones.plot(seg[:, 0], seg[:, 1], color=color,
+                          linewidth=2.4, alpha=0.92)
+        # Past cone (mirror image, downward) — drawn faintly
+        for side in ("right", "left"):
+            seg = walls[side]
+            ax_cones.plot(seg[:, 0], -seg[:, 1] + 2 * walls[side][0, 1],
+                          color=color, linewidth=1.4, alpha=0.45,
+                          linestyle="--")
+        # Fill the future cone interior
+        triangle_x = [walls["left"][1, 0], walls["right"][0, 0],
+                      walls["right"][1, 0]]
+        triangle_y = [walls["left"][1, 1], walls["right"][0, 1],
+                      walls["right"][1, 1]]
+        ax_cones.fill(triangle_x, triangle_y, color=color, alpha=0.18)
+
+        deg = float(geom.cone_tilt_degrees(float(s)))
+        ax_cones.text(float(i) * 2.5, -1.25,
+                      f"σ={s:.4g}\n{deg:.0f}°",
+                      ha="center", va="top", fontsize=9,
+                      color=color)
+
+    ax_cones.axhline(0.0, color="gray", linewidth=0.8, alpha=0.5)
+    ax_cones.set_xlabel("r (cone center, arbitrary spacing)", fontsize=10)
+    ax_cones.set_ylabel("ct", fontsize=10)
+    ax_cones.set_title(
+        "Future light cones: σ = 0 (vertical) → σ = 1/2 (horizon, 90°)",
+        fontsize=11)
+    ax_cones.set_xlim(-1.5, len(sigmas) * 2.5)
+    ax_cones.set_ylim(-1.6, 1.2)
+    ax_cones.set_aspect("equal", adjustable="box")
+    ax_cones.grid(True, alpha=0.25)
+
+    # Right panel: tilt-angle curve
+    sig_curve = np.linspace(0.0, SIGMA_MAX, 400)
+    tilt_curve = geom.cone_tilt_degrees(sig_curve)
+    ax_curve.plot(sig_curve, tilt_curve, "b-", linewidth=2.5,
+                  label="cone tilt θ(σ)")
+    ax_curve.axhline(90.0, color="red", linestyle="--", linewidth=1.5,
+                     label="90° = horizon")
+    ax_curve.axvline(SIGMA_MAX, color="orange", linestyle=":",
+                     linewidth=1.5, label="σ_max = 1/2")
+    # Mark the special points
+    for s in (0.0, 0.125, 0.25, 0.375, 0.5):
+        ax_curve.scatter([s], [float(geom.cone_tilt_degrees(s))],
+                         color="black", zorder=5, s=30)
+    ax_curve.set_xlabel("substrate strain σ", fontsize=10)
+    ax_curve.set_ylabel("cone-tilt angle θ (degrees)", fontsize=10)
+    ax_curve.set_title(
+        "Cone tilt vs σ: θ(σ) = 2·arctan(√(σ/σ_max))", fontsize=11)
+    ax_curve.legend(loc="upper left", fontsize=9)
+    ax_curve.grid(True, alpha=0.3)
+    ax_curve.set_xlim(-0.01, 0.51)
+    ax_curve.set_ylim(-2, 100)
+
+    fig.suptitle(
+        "Saturation horizon geometry: σ → 1/2 ⇒ light cone tilts 90°\n"
+        "Schwarzschild r_s = 2GM/c² recovered as the locus where σ(r) = 1/2",
+        fontsize=12)
+    fig.tight_layout()
+    out.append(save(fig, "26_horizon_cone_tilt.png"))
+
+    # ---- 27: substrate potential V(σ) + crack-tip regularization ----
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    ax_V, ax_crack = axes
+
+    # Potential V(σ) — sampled below the cap so it stays finite
+    sig_v, V = potential_curve(n=400, K=1.0, sigma_clip=0.4995)
+    ax_V.plot(sig_v, V, "b-", linewidth=2.4, label="V(σ) = -½ log(1-(σ/σ_max)²)")
+    ax_V.axvline(SIGMA_MAX, color="red", linestyle="--", linewidth=2,
+                 label="σ_max = 1/2 (cap)")
+    # The cap value at σ = 0.499 — finite even though the bare potential
+    # has a logarithmic divergence at σ = 1/2
+    V_cap = float(V[-1])
+    ax_V.axhline(V_cap, color="orange", linestyle=":", linewidth=1.5,
+                 label=f"V_cap (σ=0.4995) ≈ {V_cap:.2f}")
+    ax_V.set_xlabel("substrate strain σ", fontsize=10)
+    ax_V.set_ylabel("substrate potential V(σ)  [units of K]", fontsize=10)
+    ax_V.set_title(
+        "Substrate potential V(σ): finite cap, logarithmic divergence",
+        fontsize=11)
+    ax_V.set_xlim(-0.01, 0.55)
+    ax_V.set_ylim(-0.2, V_cap * 1.15)
+    ax_V.legend(loc="upper left", fontsize=9)
+    ax_V.grid(True, alpha=0.3)
+
+    # Crack-tip stress: classical LEFM diverges, capped version is finite
+    crack = crack_stress_curve(a=1.0, sigma_inf=0.1,
+                               r_min=1e-3, r_max=1.0, n=600)
+    ax_crack.plot(crack["r"], crack["stress_LEFM"], "r--",
+                  linewidth=2, label="σ_LEFM(r) = σ_∞ √(a/2r) (singular)")
+    ax_crack.plot(crack["r"], crack["stress_capped"], "b-",
+                  linewidth=2.4, label="σ_capped = min(σ_LEFM, σ_max)")
+    ax_crack.axhline(SIGMA_MAX, color="orange", linestyle=":",
+                     linewidth=1.5, label="σ_max = 1/2 (cap)")
+    rp = crack["process_zone_radius"]
+    ax_crack.axvline(rp, color="green", linestyle="-.",
+                     linewidth=1.5,
+                     label=f"r_p = (a/2)(σ_∞/σ_max)² = {rp:.3f}")
+    ax_crack.set_xlabel("distance from crack tip r", fontsize=10)
+    ax_crack.set_ylabel("local stress (in σ_max units)", fontsize=10)
+    ax_crack.set_title(
+        "Crack-tip regularization: same cap σ_max = 1/2 bounds the stress",
+        fontsize=11)
+    ax_crack.set_ylim(0, 1.3)
+    ax_crack.set_xlim(0, 1.0)
+    ax_crack.legend(loc="upper right", fontsize=9)
+    ax_crack.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Substrate potential V(σ) finite at the cap "
+        "→ regularises both BH horizons and crack-tip singularities",
+        fontsize=12)
+    fig.tight_layout()
+    out.append(save(fig, "27_horizon_potential.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 17. Möbius bundle 11/12 amplitude on K_4 + α derivation breakdown
+# ---------------------------------------------------------------------------
+
+def render_mobius_amplitude() -> list[str]:
+    """Produce 28_mobius_k4_11_12.png and 29_alpha_derivation.png.
+
+    28: K_4 with the 12 face-dihedral sub-simplices colored, 1 grayed
+        out by the Möbius Z_2 pinch — geometric origin of the 11/12.
+    29: α = 11/(48π³)·exp(-3π/737) decomposed into its four substrate
+        factors with running-product convergence on α_CODATA.
+    """
+    from src.stiff_medium.mobius_amplitude_visualizer import (
+        MobiusAmplitudeGeometry,
+        make_alpha_derivation_figure,
+        make_mobius_k4_figure,
+    )
+    out: list[str] = []
+
+    geom = MobiusAmplitudeGeometry()
+    fig = make_mobius_k4_figure(geometry=geom)
+    out.append(save(fig, "28_mobius_k4_11_12.png"))
+
+    fig = make_alpha_derivation_figure()
+    out.append(save(fig, "29_alpha_derivation.png"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 17b. 3D bound-state extraction (particle EMERGES as substrate strain)
+# ---------------------------------------------------------------------------
+
+def render_bound_state_3d() -> list[str]:
+    """Produce 30_bound_state_3d.png and 31_bound_state_modes.png.
+
+    30: Three 3D iso-surface snapshots of |u(x,y,z)| at t = 0, T/2, T
+        showing the substrate-strain envelope BREATHING in place.  This
+        IS the particle: a localized field pattern oscillating at
+        ω_b = c/ξ, with rest energy E_rest = ℏ ω_b.
+
+    31: Side-by-side modes — ground / first-excited / breathing — each
+        rendered as a centre-plane slice plus the centre-cell amplitude
+        trace u(0,0,0,t) and its FFT-extracted ω peak vs the analytic
+        ω_b prediction.
+    """
+    from src.stiff_medium.bound_state_3d_extractor import (
+        BoundState3DGeometry,
+        BoundState3DSimulator,
+        run_three_modes,
+    )
+    out: list[str] = []
+
+    # ---- 30: 3D iso-surfaces at t = 0, T/2, T ----
+    geom = BoundState3DGeometry(N=24, L=12.0)
+    sim = BoundState3DSimulator(
+        geometry=geom, mode="breathing",
+        n_periods=3.0, samples_per_period=24,
+    )
+    res = sim.run()
+    rep = sim.report()
+    snaps = res["snapshots"]                   # shape (3, N, N, N)
+    x = res["x"]; y = res["y"]; z = res["z"]
+    T = float(res["T_period"][0])
+
+    fig = plt.figure(figsize=(16, 6))
+    titles = [f"t = 0",
+              f"t = T/2 = {T/2:.3f}",
+              f"t = T   = {T:.3f}"]
+    abs_max = float(np.abs(snaps).max())
+    if abs_max <= 0.0:
+        abs_max = 1.0
+    iso_level = 0.35 * abs_max
+
+    for col in range(3):
+        ax = fig.add_subplot(1, 3, col + 1, projection="3d")
+        u_abs = np.abs(snaps[col])
+        # Marching-cubes-free iso-surface: scatter all cells whose
+        # |u| is close to the iso-level.  This uses only matplotlib
+        # primitives — no skimage dependency.
+        mask = (u_abs > iso_level) & (u_abs < 1.5 * iso_level)
+        if mask.sum() > 4000:   # subsample for speed
+            idx = np.where(mask.ravel())[0]
+            sub = np.random.default_rng(0).choice(idx, size=4000, replace=False)
+            mask = np.zeros(mask.size, dtype=bool); mask[sub] = True
+            mask = mask.reshape(u_abs.shape)
+        if mask.any():
+            ix, iy, iz = np.where(mask)
+            ax.scatter(x[ix], y[iy], z[iz], c=u_abs[mask],
+                       cmap="plasma", s=12, alpha=0.55,
+                       vmin=0.0, vmax=abs_max)
+        # Outline the cube
+        ax.set_xlim(x.min(), x.max())
+        ax.set_ylim(y.min(), y.max())
+        ax.set_zlim(z.min(), z.max())
+        ax.set_xlabel("x [ξ]")
+        ax.set_ylabel("y [ξ]")
+        ax.set_zlabel("z [ξ]")
+        ax.set_title(titles[col], fontsize=11)
+
+    fig.suptitle(
+        f"3D bound state EMERGES from substrate field u(x,y,z,t) — "
+        f"iso-surfaces |u| = {iso_level:.3f}\n"
+        f"ω_meas = {rep['omega_meas']:.4f}  |  ω_b = {rep['omega_pred']:.4f}  "
+        f"({rep['omega_rel_err']*100:.2f}% off)   "
+        f"E_rest = ℏ ω_b = {rep['rest_E_pred']:.3e} J",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "30_bound_state_3d.png"))
+
+    # ---- 31: ground / excited / breathing side-by-side ----
+    results = run_three_modes(
+        geometry=BoundState3DGeometry(N=24, L=12.0),
+        n_periods=3.0,
+        samples_per_period=32,
+    )
+    fig, axes = plt.subplots(2, 3, figsize=(16, 9))
+    mode_titles = {
+        "ground":    "GROUND mode (sech-shaped bump)",
+        "excited":   "FIRST-EXCITED (1 radial node)",
+        "breathing": "BREATHING (amplitude jitter)",
+    }
+
+    # Top row: centre-plane (z = 0) slice of u at t = 0
+    for col, mode in enumerate(("ground", "excited", "breathing")):
+        ax = axes[0, col]
+        snap0 = results[mode]["snapshots"][0]    # t = 0
+        # Use central z-slice
+        cz = snap0.shape[2] // 2
+        slab = snap0[:, :, cz]
+        vmax = float(np.abs(slab).max())
+        if vmax <= 0.0: vmax = 1.0
+        im = ax.imshow(
+            slab.T, origin="lower", cmap="RdBu_r",
+            extent=[results[mode]["x"].min(), results[mode]["x"].max(),
+                    results[mode]["y"].min(), results[mode]["y"].max()],
+            vmin=-vmax, vmax=vmax, aspect="equal",
+        )
+        ax.set_title(mode_titles[mode], fontsize=10)
+        ax.set_xlabel("x [ξ]")
+        ax.set_ylabel("y [ξ]")
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="u(x,y,0)")
+
+    # Bottom row: centre-cell amplitude trace + frequency comparison
+    for col, mode in enumerate(("ground", "excited", "breathing")):
+        ax = axes[1, col]
+        t = results[mode]["t"]
+        u_c = results[mode]["u_center"]
+        omega_meas = float(results[mode]["_omega_meas"][0])
+        omega_pred = float(results[mode]["_omega_pred"][0])
+        rel_err = abs(omega_meas - omega_pred) / max(omega_pred, 1e-30)
+
+        ax.plot(t, u_c, "b-", linewidth=1.4, label="u(0,0,0,t)")
+        # Analytic envelope at ω_b for visual comparison
+        u0_amp = float(np.abs(u_c[:8]).max())
+        ax.plot(t, u_c[0] * np.cos(omega_pred * t), "r--",
+                linewidth=1.0, alpha=0.6,
+                label=f"cos(ω_b t), ω_b={omega_pred:.3f}")
+        ax.set_xlabel("t [c·ξ⁻¹·ω_b⁻¹]")
+        ax.set_ylabel("u(0)")
+        color = "green" if rel_err < 0.10 else "orange" if rel_err < 0.25 else "red"
+        ax.set_title(
+            f"ω_meas={omega_meas:.3f}  vs  ω_b={omega_pred:.3f}  "
+            f"({rel_err*100:.1f}%)",
+            fontsize=10, color=color,
+        )
+        ax.legend(fontsize=8, loc="upper right")
+        ax.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Bound-state mode catalogue — particle = substrate strain pattern\n"
+        "Top: centre-plane slice of u(x,y,0).   Bottom: centre-cell "
+        "u(0,0,0,t) trace vs analytic cos(ω_b t)",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "31_bound_state_modes.png"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 18. Lagrangian-term contributions (each term turned on separately)
+# ---------------------------------------------------------------------------
+
+def render_lagrangian_terms() -> list[str]:
+    """Produce 32_lagrangian_terms.png and 33_term_contributions.png.
+
+    32: 4 panels — KINETIC+GRADIENT (free wave), KINETIC+POTENTIAL
+        (bound oscillation), KINETIC+DRAG (exponential decay), and the
+        FULL Lagrangian (kink-antikink particle dynamics).
+    33: Energy-flow diagram with each Lagrangian term labeled — symbol,
+        physical role, Euler-Lagrange contribution, and what is lost
+        when the term is omitted.
+    """
+    from src.stiff_medium.lagrangian_term_visualizer import (
+        LagrangianTermGeometry,
+        draw_term_contributions,
+        draw_term_panels,
+    )
+    out: list[str] = []
+
+    geom = LagrangianTermGeometry(rho=1.0, K=1.0, xi=1.0, gamma=0.3)
+
+    fig = draw_term_panels(geometry=geom)
+    out.append(save(fig, "32_lagrangian_terms.png"))
+
+    fig = draw_term_contributions(geometry=geom)
+    out.append(save(fig, "33_term_contributions.png"))
     return out
 
 
@@ -574,6 +1153,15 @@ def main() -> None:
         ("Cone-bouncing visualizer", render_cone_bouncing),
         ("Multi-nucleon K_4 stacking", render_nucleon_stacking),
         ("Mass-torque ladder", render_mass_ladder),
+        ("3-generation tower", render_generation_tower),
+        ("Saturation horizon (cone-tilt + potential)", render_saturation_horizon),
+        ("Möbius 11/12 amplitude on K_4 + α breakdown", render_mobius_amplitude),
+        ("Möbius sheet-swap (Z/2, Majorana, σ=½ fixed point)",
+         render_mobius_sheet_swap),
+        ("3D bound-state extraction (particle = substrate strain)",
+         render_bound_state_3d),
+        ("Lagrangian-term contributions (kin/grad/pot/drag)",
+         render_lagrangian_terms),
         ("Substrate visualizer", render_substrate_visualizer),
     ]
     all_paths = []
