@@ -411,7 +411,47 @@ def render_cosmology_evolution() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# 11. Mass torque ladder
+# 11. Cone-bouncing visualizer (geometry + simulator)
+# ---------------------------------------------------------------------------
+
+def render_cone_bouncing() -> list[str]:
+    """Produce 17_cone_bouncing.png and 18_cone_bouncing_drag_scan.png.
+
+    Visualises the cone-bouncing mass mechanism: a substrate-strain
+    envelope reflecting off the σ = ±1/2 saturation cone walls at
+    frequency ω_b, with m c² = ℏ ω_b.
+    """
+    from src.stiff_medium.cone_bouncing_visualizer import (
+        ConeBouncingGeometry,
+        ConeBouncingSimulator,
+        make_bouncing_figure,
+        make_drag_scan_figure,
+    )
+    out: list[str] = []
+
+    # Use natural-baseline primitives for the geometry panel so the
+    # bouncing envelope is visually clean.  The mass-energy mapping
+    # m c² = ℏ ω_b still applies; the panel is about geometry, not
+    # SI absolute values.
+    geom = ConeBouncingGeometry(K=1.0, rho=1.0, xi=1.0, gamma=0.0)
+    sim  = ConeBouncingSimulator(geometry=geom, amplitude_frac=0.95,
+                                  n_steps=4000, dt_per_period=200)
+    fig = make_bouncing_figure(geom, sim)
+    out.append(save(fig, "17_cone_bouncing.png"))
+
+    # Drag scan in natural units so the 5-point ladder is visible
+    sim_scan = ConeBouncingSimulator(
+        geometry=ConeBouncingGeometry(K=1.0, rho=1.0, xi=1.0),
+        amplitude_frac=0.6,
+        n_steps=4000, dt_per_period=200,
+    )
+    fig = make_drag_scan_figure(sim_scan)
+    out.append(save(fig, "18_cone_bouncing_drag_scan.png"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 12. Mass torque ladder
 # ---------------------------------------------------------------------------
 
 def render_mass_ladder() -> list[str]:
@@ -454,7 +494,48 @@ def render_mass_ladder() -> list[str]:
             ax.text(b.get_x() + b.get_width()/2, b.get_height(),
                     f"{r:.4f}", ha="center", va="bottom", fontsize=8)
         fig.tight_layout()
-        out.append(save(fig, "17_mass_torque_ladder.png"))
+        out.append(save(fig, "21_mass_torque_ladder.png"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 13. Multi-nucleon K_4 stacking (deuteron, triton, alpha)
+#     + nuclear chart BE/A vs PDG
+# ---------------------------------------------------------------------------
+
+def render_nucleon_stacking() -> list[str]:
+    """Produce 19_nucleon_stacking.png and 20_nuclear_chart.png.
+
+    19: 3D rendering of deuteron, triton, alpha as face-shared K_4 stacks.
+    20: BE/A vs A curve showing predicted (K_4 stacking) vs PDG/AME2020.
+    """
+    from src.stiff_medium.nucleon_stacking_geometry import (
+        NuclearChartVisualizer,
+        NucleonStackGeometry,
+        get_topology,
+    )
+    out: list[str] = []
+
+    # ---- 19: deuteron + triton + alpha 3D ----
+    fig = plt.figure(figsize=(18, 6))
+    viz = NuclearChartVisualizer()
+    for col, A in enumerate([2, 3, 4]):
+        ax = fig.add_subplot(1, 3, col + 1, projection="3d")
+        viz.visualize_geometry_3d(A, ax=ax, highlight_shared=True)
+    fig.suptitle(
+        "Multi-nucleon K_4 stacking: A nucleon ↔ 1 K_4 cell, "
+        "shared faces (red) bind by ε_face = 2.222 MeV",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "19_nucleon_stacking.png"))
+
+    # ---- 20: BE/A nuclear chart vs PDG ----
+    fig, ax = plt.subplots(figsize=(11, 6))
+    viz.chart_BE_per_A(ax=ax, A_max=20)
+    fig.tight_layout()
+    out.append(save(fig, "20_nuclear_chart.png"))
+
     return out
 
 
@@ -490,6 +571,8 @@ def main() -> None:
         ("Möbius bundle", render_mobius_bundle),
         ("EM radiation patterns", render_em_radiation),
         ("Cosmology de-saturation", render_cosmology_evolution),
+        ("Cone-bouncing visualizer", render_cone_bouncing),
+        ("Multi-nucleon K_4 stacking", render_nucleon_stacking),
         ("Mass-torque ladder", render_mass_ladder),
         ("Substrate visualizer", render_substrate_visualizer),
     ]
