@@ -16,9 +16,12 @@ Hypothesis (B3 framework):
         -> matches observed m_mu/m_e = 206.768 at ~0.0017 %.
 
     Generation 2 -> 3 (mu -> tau):
-        ratio_23 = exp(n_M / (K_rank * (K_rank + 1) * pi))
-                 = exp(268 / (30 * pi))   # 30 = 5 * 6
-        -> matches observed m_tau/m_mu = 16.817 at ~2.14 %.
+        ratio_23 = exp( n_M / (K_pair**4 * pi)
+                        - (n_R - R) / (K_pair * (K_pair + 1)) )
+                 = exp(268/(16*pi) - 15/6)
+        -> matches observed m_tau/m_mu = 16.817 at ~0.94 %.
+        (Canonical n_R-active form, shared with mass_torque_engine.
+         Legacy form exp(n_M/(K_rank*(K_rank+1)*pi)) was 2.14 % off.)
 
     Generation 1 -> 3 (e -> tau):
         ratio_13 = ratio_12 * ratio_23.
@@ -63,6 +66,8 @@ from .b3_constants import (
     n_M as _CANONICAL_N_M,
     K_pair as _CANONICAL_K_PAIR,
     K_rank as _CANONICAL_K_RANK,
+    n_R as _CANONICAL_N_R,
+    R as _CANONICAL_R,
 )
 
 
@@ -116,6 +121,8 @@ class GenerationMap:
     n_M: int = _CANONICAL_N_M     # 268
     K_pair: int = _CANONICAL_K_PAIR  # 2
     K_rank: int = _CANONICAL_K_RANK  # 5
+    n_R: int = _CANONICAL_N_R     # 18
+    R: int = _CANONICAL_R         # 3
 
     # ------------------------------------------------------------------ core
 
@@ -124,9 +131,33 @@ class GenerationMap:
         return (self.K_pair ** 4) * np.pi
 
     def _denominator_23(self) -> float:
-        """Denominator in the exponent for the 2 -> 3 step."""
-        # 30 = K_rank * (K_rank + 1) with K_rank = 5
+        """Denominator in the exponent for the 2 -> 3 step.
+
+        DEPRECATED: legacy form exp(n_M / (K_rank*(K_rank+1)*pi)) gave
+        ratio 17.18 (2.14% off PDG). Retained only for back-compat;
+        the canonical lepton tower exponent now lives in
+        :meth:`_log_ratio_23` and matches mass_torque_engine.
+        """
         return self.K_rank * (self.K_rank + 1) * np.pi
+
+    def _log_ratio_23(self) -> float:
+        """Log of m_tau / m_mu (canonical, n_R-active form).
+
+        Delegates to :func:`tau_mass_unified.log_m_tau_over_m_mu`, the
+        single source of truth shared with ``mass_torque_engine._t_tau``
+        and ``integer_rigidity.predict_m_tau_over_m_e``:
+
+            ln(m_tau/m_mu) = n_M / (K_pair^4 * pi)
+                             - (n_R - R) / (K_pair*(K_pair+1))
+
+        With (n_M, K_pair, K_rank, n_R, R) = (268, 2, 5, 18, 3) this
+        gives 16.97 (0.93% off PDG 16.817), and makes n_R an active
+        observable input rather than a derived identity.
+        """
+        from .tau_mass_unified import log_m_tau_over_m_mu
+        return log_m_tau_over_m_mu(
+            n_M=self.n_M, K_pair=self.K_pair, n_R=self.n_R, R=self.R,
+        )
 
     def lepton_ratio(self, generation_high: int, generation_low: int) -> float:
         """
@@ -142,7 +173,7 @@ class GenerationMap:
         if (generation_high, generation_low) == (2, 1):
             return float(np.exp(self.n_M / self._denominator_12()))
         if (generation_high, generation_low) == (3, 2):
-            return float(np.exp(self.n_M / self._denominator_23()))
+            return float(np.exp(self._log_ratio_23()))
         if (generation_high, generation_low) == (3, 1):
             return self.lepton_ratio(2, 1) * self.lepton_ratio(3, 2)
 
@@ -256,12 +287,13 @@ class GenerationMap:
     # where omega_b is the cone-bouncing angular frequency in the stiff
     # medium, set by the substrate drag coefficient gamma at each
     # generation. Mass ratios m_mu/m_e, m_tau/m_e are RELATIONS between
-    # drag-derived masses --- the exp(n_M / (16 pi)) and exp(n_M / (30 pi))
-    # forms ARE the inter-generation drag scale ratios.
+    # drag-derived masses --- the exp(n_M / (16 pi)) (mu/e) and
+    # exp(n_M/(K_pair^4 pi) - (n_R-R)/(K_pair(K_pair+1))) (tau/mu) forms
+    # ARE the inter-generation drag scale ratios.
     #
     # Anchor: gamma_1 chosen so generation-1 lepton mass = m_e (PDG).
     # Then gamma_2 = gamma_1 * exp(n_M/(K_pair^4 * pi))
-    #      gamma_3 = gamma_2 * exp(n_M/(K_rank*(K_rank+1)*pi))
+    #      gamma_3 = gamma_2 * exp(n_M/(K_pair^4 pi) - (n_R-R)/(K_pair(K_pair+1)))
     #
     # Particle-type prefactor f(particle_type) absorbs sector-dependent
     # coupling (1.0 for charged leptons by definition; quarks/neutrinos
@@ -284,7 +316,7 @@ class GenerationMap:
             return gamma_1 * float(np.exp(self.n_M / self._denominator_12()))
         # generation == 3
         gamma_2 = gamma_1 * float(np.exp(self.n_M / self._denominator_12()))
-        return gamma_2 * float(np.exp(self.n_M / self._denominator_23()))
+        return gamma_2 * float(np.exp(self._log_ratio_23()))
 
     def electron_mass_anchor(self) -> float:
         """
@@ -375,7 +407,7 @@ class GenerationMap:
             f"{self.lepton_ratio(2,1):.6f}"
         )
         lines.append(
-            f"  gamma_3/gamma_2 = exp(n_M/(K_rank(K_rank+1) pi)) = "
+            f"  gamma_3/gamma_2 = exp(n_M/(K_pair^4 pi) - (n_R-R)/(K_pair(K_pair+1))) = "
             f"{self.lepton_ratio(3,2):.6f}"
         )
         lines.append("=" * 72)
@@ -397,7 +429,7 @@ class GenerationMap:
             f"  exp(n_M/(K_pair^4 * pi)) = {self.lepton_ratio(2,1):.6f}"
         )
         lines.append(
-            f"  exp(n_M/(K_pair*(K_rank^2-1)*pi)) = "
+            f"  exp(n_M/(K_pair^4 pi) - (n_R-R)/(K_pair(K_pair+1))) = "
             f"{self.lepton_ratio(3,2):.6f}"
         )
         lines.append("=" * 72)

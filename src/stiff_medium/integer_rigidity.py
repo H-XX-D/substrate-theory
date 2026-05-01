@@ -84,10 +84,15 @@ def predict_m_mu_over_m_e(integers: Dict[str, int]) -> float:
 
 
 def predict_m_tau_over_m_e(integers: Dict[str, int]) -> float:
-    """m_tau / m_e via the lepton tower used in mass_torque_engine.
+    """m_tau / m_e via the lepton tower (canonical, n_R-active form).
 
         m_tau / m_mu = exp(n_M/(K_pair^4 pi) - (n_R - R)/(K_pair*(K_pair+1)))
         m_mu  / m_e  = exp(n_M/(K_pair^4 pi))
+
+    The m_tau/m_mu factor delegates to
+    :func:`tau_mass_unified.log_m_tau_over_m_mu`, the single source of
+    truth shared with ``generation_map._log_ratio_23`` and
+    ``mass_torque_engine._t_tau``.
 
     The reflection-counted term (n_R - R)/(K_pair*(K_pair+1)) equals
     K_rank/K_pair = 5/2 at the canonical integers (15/6 = 5/2 EXACTLY),
@@ -96,12 +101,15 @@ def predict_m_tau_over_m_e(integers: Dict[str, int]) -> float:
     shifts m_tau/m_e (rather than silently doing nothing as in the prior
     K_rank-only form).
     """
+    from .tau_mass_unified import log_m_tau_over_m_mu
     n_M = integers["n_M"]
     K_pair = integers["K_pair"]
     n_R = integers["n_R"]
     R_int = integers.get("R", 3)
     log_mu = n_M / (K_pair ** 4 * math.pi)
-    log_ratio = log_mu - (n_R - R_int) / (K_pair * (K_pair + 1))
+    log_ratio = log_m_tau_over_m_mu(
+        n_M=n_M, K_pair=K_pair, n_R=n_R, R=R_int,
+    )
     return float(math.exp(log_mu) * math.exp(log_ratio))
 
 

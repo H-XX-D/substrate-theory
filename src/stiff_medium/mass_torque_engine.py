@@ -393,8 +393,14 @@ class MassTorque:
         # perturbing n_R by +/- 1 shifts m_tau/m_mu directly, rather than
         # entering only via the n_M = K_pair * K_rank**3 + n_R defining identity.
         R_int = self.integers["R"]
-        log_ratio = (n_M / (K_pair ** 4 * np.pi)
-                     - (n_R - R_int) / (K_pair * (K_pair + 1)))
+        # Delegate to the single source of truth for this formula:
+        # tau_mass_unified.log_m_tau_over_m_mu (shared with
+        # generation_map._log_ratio_23 and
+        # integer_rigidity.predict_m_tau_over_m_e).
+        from src.stiff_medium.tau_mass_unified import log_m_tau_over_m_mu
+        log_ratio = log_m_tau_over_m_mu(
+            n_M=n_M, K_pair=K_pair, n_R=n_R, R=R_int,
+        )
         ratio_tau_mu = np.exp(log_ratio)
         m_mu = M_ELECTRON_MEV * np.exp(n_M / (K_pair ** 4 * np.pi))
         m_tau = m_mu * ratio_tau_mu
