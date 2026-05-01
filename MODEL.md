@@ -426,6 +426,19 @@ These were marked open earlier; substrate predictions added with the
 6. ✅ **Higgs self-coupling** λ_H = K_pair/n_A = 2/15 vs 0.129 (3.0%)
    Same as substrate λ_P — not a separate parameter.
 
+   **Cleaner formulation (no Mexican hat):** drop the messy quartic
+   −μ²|φ|² + λ|φ|⁴ entirely. Use only sine-Gordon × saturation:
+
+       V(φ) = (K/ξ²)(1 − cos(φ/ξ)) / √(1 − (φ/φ_max)²)
+
+   - No fine-tuning (no μ² to balance against radiative corrections)
+   - No degenerate vacuum (single minimum at φ = 0)
+   - No cosmological-constant catastrophe (V(0) = 0)
+   - v_EW ≡ φ_max is the substrate **saturation scale**, not a VEV
+   - Higgs mass m_H = √(2λ_P)·v_EW · exp(−π/Q_α) closes to **0.23%**
+     (the SAME drag Q from α derivation closes both observables).
+   See `scripts/clean_lagrangian_proposal.py`.
+
 ### 6.2 Remaining open work
 
 7. **Full CKM matrix** — only Cabibbo angle V_us = 1/(π√2) cleanly derived
