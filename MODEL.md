@@ -352,6 +352,21 @@ inventory integers (no SM-style separate Yukawas/mixing matrices).
 
 **26 observables, average residual < 0.5%, 8 of them at <0.1%.**
 
+### 5.1b QCD sector additions (2026-05-01 follow-up)
+
+| sector | observable | substrate result | match |
+|---|---|---|---|
+| Strong | **α_s(M_Z)** | **16α = π/n_N** | **0.97%** |
+| Quark | m_u | ε_face | 2.9% |
+| Quark | m_d | 2·ε_face | 4.8% |
+| Quark | m_s | ε_pair | 7.5% |
+| Quark | m_c | (n_F+1)·ε_pair | 2.4% |
+| Quark | m_b | 21·Λ_QCD | 0.48% |
+| Quark | m_t | v_EW/√2 | 0.63% |
+| Higgs | λ_H | K_pair/n_A = 2/15 | 3.0% |
+
+**Total: 34 observables, all from one substrate ontology + B3 inventory.**
+
 ### 5.2 Older core benchmark suite (pre-session)
 
 | Domain | # | Best agreement |
@@ -391,12 +406,34 @@ geometry + drag + B3 integer recycling:
    sin θ_C (Cabibbo) = 1/(π√2) — 0.035%
    See `scripts/pmns_complete.py`, `scripts/ckm_higgs_substrate.py`.
 
-### 6.1 Still open
+### 6.1 QCD sector (new 2026-05-01)
 
-4. **Color confinement / α_s running** — SU(3) sector needs explicit derivation
-   of confinement scale dynamics from substrate.
-5. **Current quark masses (u, d, s, c, t)** — only m_b cleanly derived;
-   constituent-scale results stronger than current-mass results.
+These were marked open earlier; substrate predictions added with the
+α_s = 16α relation:
+
+4. ✅ **α_s(M_Z)** — α_s = 16α = 0.1168 vs 0.1179 (0.97%)
+   16 = (Strand+1)² = K_4 vertex count squared
+   Equivalently α_s = π/n_N = π/27 (1.27%)
+
+5. ✅ **Current quark masses** (substrate units = ε_face, ε_pair, Λ_QCD):
+   m_u = ε_face = 2.222 MeV vs 2.16 (2.9%)
+   m_d = 2·ε_face = 4.44 MeV vs 4.67 (4.8%)
+   m_s = ε_pair = 100 MeV vs 93 (7.5%)
+   m_c = (n_F+1)·ε_pair = 1300 MeV vs 1270 (2.4%)
+   m_b = 21·Λ_QCD = 4200 MeV vs 4180 (0.48%)
+   m_t = v_EW/√2 = 174.1 GeV vs 173 (0.63%)
+
+6. ✅ **Higgs self-coupling** λ_H = K_pair/n_A = 2/15 vs 0.129 (3.0%)
+   Same as substrate λ_P — not a separate parameter.
+
+### 6.2 Remaining open work
+
+7. **Full CKM matrix** — only Cabibbo angle V_us = 1/(π√2) cleanly derived
+   at 0.035%. V_cb, V_ub, V_td need substrate-mechanical derivation
+   (leading-order Wolfenstein with substrate inputs doesn't yet land).
+
+8. **Color confinement dynamics** — explicit α_s(μ) running, jet physics,
+   meson/baryon spectroscopy beyond the inventory-matched values.
 4. **Current-quark masses and SU(3)-breaking renormalization** — constituent-scale results are stronger than current-mass results
 5. **Matter-sector orientation selection / inheritance** — replaces one-shot Big-Bang baryogenesis in the no-singular-beginning picture
 6. **Planck-scale UV completion** — needs either primitive `ξ_P`, derived `χ_UV ≈ 4.2e-23`, or a real phase-slip action/fixed point near `S_UV ≈ 51.53`
