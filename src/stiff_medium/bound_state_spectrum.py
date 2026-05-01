@@ -34,6 +34,13 @@ HBARC_MeV_fm = 197.3269804          # MeV fm
 M_PROTON_MeV = 938.27208816
 M_NEUTRON_MeV = 939.56542052
 MU_DEUTERON_MeV = (M_PROTON_MeV * M_NEUTRON_MeV) / (M_PROTON_MeV + M_NEUTRON_MeV)
+C_LIGHT = 2.99792458e8              # m/s
+HBAR_SI = 1.054571817e-34           # J s
+
+# Electron cone-bouncing angular frequency anchor: omega_e = m_e c^2 / hbar.
+# Drag-derived mass is calibrated so that hbar * omega_b(gamma; K, rho, xi) / c^2
+# reproduces m_e when (gamma, K, rho, xi) sit on the electron anchor surface.
+OMEGA_E_RAD_S = (M_E_eV * E_CHARGE) / HBAR_SI   # ~ 7.764e20 rad/s
 
 
 @dataclass
@@ -51,6 +58,35 @@ class SubstrateParams:
         modify this with K, rho, xi, gamma.
         """
         return m_bare
+
+    def drag_mass_SI(self) -> float:
+        """Drag-derived effective mass in kg from cone-bouncing.
+
+        Mechanism (cf. cone_bouncing.py): the substrate cone executes a
+        bouncing oscillation with angular frequency
+
+            omega_b = gamma * sqrt(K / rho) / xi
+
+        where sqrt(K/rho) is the substrate wave speed and xi is the cone
+        aperture / coherence length.  The drag coefficient gamma sets how
+        many wave-crossings per cone-traversal time accumulate as inertia.
+        Mass = hbar * omega_b / c^2 (the cone-bouncing momentum IS rest mass).
+        """
+        c_s = np.sqrt(self.K / self.rho)
+        omega_b = self.gamma * c_s / self.xi
+        return HBAR_SI * omega_b / (C_LIGHT * C_LIGHT)
+
+    @classmethod
+    def electron_anchor(cls, K: float = 1.0, rho: float = 1.0,
+                        xi: float = 1.0) -> "SubstrateParams":
+        """Return (K, rho, xi, gamma) with gamma chosen to land on the
+        electron mass anchor: drag_mass_SI() == M_E_kg.
+
+        gamma = (m_e c^2 / hbar) * xi / sqrt(K / rho) = omega_e * xi / c_s.
+        """
+        c_s = np.sqrt(K / rho)
+        gamma = OMEGA_E_RAD_S * xi / c_s
+        return cls(K=K, rho=rho, xi=xi, gamma=gamma)
 
 
 @dataclass
@@ -202,6 +238,86 @@ class BoundStateSpectrum:
                      np.array([BE_pred]), np.array([BE_emp]),
                      unit="MeV")
         return BE_pred, BE_emp, bound
+
+    # ---------- drag-derived effective mass ----------
+    @staticmethod
+    def effective_mass_from_drag(gamma: float, K: float, rho: float,
+                                 xi: float) -> float:
+        """Cone-bouncing drag-derived effective mass in kg.
+
+        m_eff = hbar * omega_b / c^2,    omega_b = gamma * sqrt(K/rho) / xi.
+
+        With (K, rho, xi) treated as substrate primitives in SI units
+        (N/m^2, kg/m^3, m), gamma is the dimensionless drag coefficient
+        (number of wave-crossings per cone-traversal time).  The electron
+        anchor sits at gamma = omega_e * xi / sqrt(K/rho).
+        """
+        c_s = np.sqrt(K / rho)
+        omega_b = gamma * c_s / xi
+        return HBAR_SI * omega_b / (C_LIGHT * C_LIGHT)
+
+    def solve_hydrogen_substrate(self, sub: Optional[SubstrateParams] = None,
+                                 n_states: int = 1, l: int = 0,
+                                 r_max_bohr: float = 80.0, N: int = 8000):
+        """Hydrogen Coulomb solve using the DRAG-DERIVED electron mass.
+
+        m_e is replaced by m_drag = hbar * omega_b(gamma; K, rho, xi) / c^2.
+        If `sub` is on the electron anchor surface, the ground state should
+        recover -13.6 eV; deviations from the anchor scale the Rydberg by
+        m_drag / m_e.
+        """
+        sub = sub if sub is not None else SubstrateParams.electron_anchor()
+        m_drag = sub.drag_mass_SI()
+        r_min = 0.01 * A0
+        # Bohr radius scales as 1/m_e; rescale grid so we resolve the cusp
+        # for a different electron mass.
+        a0_eff = A0 * (M_E_kg / m_drag)
+        r = np.linspace(r_min * (a0_eff / A0), r_max_bohr * a0_eff, N)
+        V_J = -(E_CHARGE ** 2) / (4.0 * np.pi * EPS0 * r)
+        H = self._hamiltonian(r, V_J, HBAR_SI, m_drag, l=l)
+        vals, vecs = eigsh(H, k=n_states + l, which="SA")
+        vals = np.sort(vals) / E_CHARGE
+        eigs_eV = vals[:n_states]
+        Ry_eff = RYDBERG_eV * (m_drag / M_E_kg)
+        analytic = np.array([-Ry_eff / (n + l + 1) ** 2 for n in range(n_states)])
+        self._record("Hydrogen (drag-derived m_e, l=%d)" % l,
+                     eigs_eV, analytic, unit="eV")
+        return eigs_eV, analytic, m_drag
+
+    def solve_with_drag_renormalization(self, r: np.ndarray, V: np.ndarray,
+                                        sub: SubstrateParams,
+                                        k: int = 5, l: int = 0,
+                                        sigma: Optional[float] = None,
+                                        hbar: float = HBAR_SI):
+        """Solve any radial bound-state problem with drag-renormalised mass.
+
+        Inputs follow the same units convention as `solve`; the mass is
+        replaced by `sub.drag_mass_SI()` (SI kg) — the caller is responsible
+        for ensuring V and r use SI units (J, m) when passing the default
+        hbar=HBAR_SI, or for matching units of (hbar, mass, V, r) otherwise.
+        """
+        m_drag = sub.drag_mass_SI()
+        return self.solve(r, V, hbar=hbar, mass=m_drag, k=k, l=l, sigma=sigma)
+
+    def verify_drag_mass_consistency(self, sub: Optional[SubstrateParams] = None,
+                                     tol: float = 0.02) -> dict:
+        """Show that hydrogen ground state from substrate drag matches Rydberg.
+
+        Returns a dict with predicted m_e (kg), bohr-anchored Rydberg, and the
+        numerically computed ground-state energy in eV.  Sets the verification
+        flag based on |E_gs + 13.6 eV| / 13.6 eV < tol.
+        """
+        sub = sub if sub is not None else SubstrateParams.electron_anchor()
+        m_drag = sub.drag_mass_SI()
+        eigs_eV, analytic, _ = self.solve_hydrogen_substrate(sub=sub,
+                                                             n_states=1, l=0)
+        rel_err = abs(eigs_eV[0] - (-RYDBERG_eV)) / RYDBERG_eV
+        return dict(m_drag_kg=m_drag,
+                    m_drag_over_me=m_drag / M_E_kg,
+                    E_ground_eV=float(eigs_eV[0]),
+                    Rydberg_eV=RYDBERG_eV,
+                    rel_err=float(rel_err),
+                    passes=bool(rel_err < tol))
 
     # ---------- reporting ----------
     def _record(self, label: str, predicted: np.ndarray, analytic: np.ndarray,

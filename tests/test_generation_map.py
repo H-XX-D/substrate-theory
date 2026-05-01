@@ -104,3 +104,59 @@ def test_report_runs(gmap: GenerationMap, capsys: pytest.CaptureFixture) -> None
     assert "Substrate Generation Map" in txt
     captured = capsys.readouterr()
     assert "Substrate Generation Map" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# Drag-mechanism tests
+# ---------------------------------------------------------------------------
+
+
+def test_electron_mass_from_drag_anchor(gmap: GenerationMap) -> None:
+    """m_e at gen-1 must equal PDG by construction of the anchor."""
+    m_e = gmap.mass_from_drag(1, "lepton")
+    assert math.isclose(m_e, LEPTON_MASSES_MEV["e"], rel_tol=1e-15)
+
+
+def test_muon_drag_scale(gmap: GenerationMap) -> None:
+    """gamma_2/gamma_1 from substrate ratio must reproduce m_mu/m_e."""
+    gamma_1 = gmap.gen_drag_scale(1)
+    gamma_2 = gmap.gen_drag_scale(2)
+    ratio = gamma_2 / gamma_1
+    obs = LEPTON_MASSES_MEV["mu"] / LEPTON_MASSES_MEV["e"]
+    err_pct = 100.0 * abs(ratio - obs) / obs
+    assert err_pct < 0.01
+
+
+def test_drag_scaling_consistent(gmap: GenerationMap) -> None:
+    """Drag-derived ratios match direct exp(n_M/...) lepton_ratio values."""
+    out = gmap.verify_drag_consistency()
+    for key in ("mu/e", "tau/mu", "tau/e"):
+        assert math.isclose(
+            out[key]["predicted"], out[key]["observed"], rel_tol=1e-12
+        )
+
+
+def test_predict_lepton_masses_from_drag_keys(gmap: GenerationMap) -> None:
+    masses = gmap.predict_lepton_masses_from_drag()
+    assert set(masses) == {"e", "mu", "tau"}
+    assert masses["mu"] > masses["e"]
+    assert masses["tau"] > masses["mu"]
+
+
+def test_report_drag_scales_runs(
+    gmap: GenerationMap, capsys: pytest.CaptureFixture
+) -> None:
+    txt = gmap.report_drag_scales()
+    assert "Substrate Drag Scales" in txt
+    captured = capsys.readouterr()
+    assert "gamma" in captured.out
+
+
+def test_gen_drag_scale_invalid_generation(gmap: GenerationMap) -> None:
+    with pytest.raises(ValueError):
+        gmap.gen_drag_scale(4)
+
+
+def test_mass_from_drag_invalid_particle(gmap: GenerationMap) -> None:
+    with pytest.raises(ValueError):
+        gmap.mass_from_drag(1, "tachyon")

@@ -73,6 +73,58 @@ def test_deuteron_K4(solver):
         f"deuteron BE_pred={BE_pred:.3f} MeV vs empirical {BE_emp} MeV")
 
 
+def test_drag_derived_electron_mass():
+    """m_e from drag-cone-bouncing matches 0.511 MeV within 5%."""
+    sub = SubstrateParams.electron_anchor(K=1.0, rho=1.0, xi=1.0)
+    m_drag = sub.drag_mass_SI()
+    M_E_kg = 9.1093837015e-31
+    rel_err = abs(m_drag - M_E_kg) / M_E_kg
+    assert rel_err < 0.05, (
+        f"drag-derived m_e = {m_drag:.4e} kg, expected {M_E_kg:.4e}, "
+        f"rel_err={rel_err:.2%}")
+    # Static method should agree with the bound method.
+    m_static = BoundStateSpectrum.effective_mass_from_drag(
+        gamma=sub.gamma, K=sub.K, rho=sub.rho, xi=sub.xi)
+    assert abs(m_static - m_drag) / m_drag < 1e-12
+
+
+def test_hydrogen_with_drag_mass(solver):
+    """Hydrogen ground state = -13.6 eV using drag-derived m_e."""
+    sub = SubstrateParams.electron_anchor()
+    eigs, analytic, m_drag = solver.solve_hydrogen_substrate(
+        sub=sub, n_states=1, l=0, r_max_bohr=80.0, N=8000)
+    assert abs(eigs[0] - (-RYDBERG_eV)) / RYDBERG_eV < 0.01, (
+        f"H ground state with drag-derived m_e: {eigs[0]:.4f} eV "
+        f"vs -13.6 eV")
+    info = solver.verify_drag_mass_consistency(sub=sub)
+    assert info["passes"], info
+
+
+def test_mass_independent_of_drag_anchor(solver):
+    """Different self-consistent (K, rho, xi, gamma) anchors give same m_e."""
+    anchors = [
+        SubstrateParams.electron_anchor(K=1.0, rho=1.0, xi=1.0),
+        SubstrateParams.electron_anchor(K=4.0, rho=1.0, xi=1.0),     # c_s x2
+        SubstrateParams.electron_anchor(K=1.0, rho=2.5, xi=0.7),
+        SubstrateParams.electron_anchor(K=9.0, rho=4.0, xi=2.3),
+    ]
+    masses = [s.drag_mass_SI() for s in anchors]
+    m0 = masses[0]
+    for m in masses[1:]:
+        assert abs(m - m0) / m0 < 1e-10, (
+            f"anchor-mass inconsistency: {m} vs {m0}")
+    # Hydrogen ground state should also be invariant.
+    energies = []
+    for s in anchors:
+        eigs, _, _ = solver.solve_hydrogen_substrate(
+            sub=s, n_states=1, l=0, r_max_bohr=80.0, N=8000)
+        energies.append(eigs[0])
+    e0 = energies[0]
+    for e in energies[1:]:
+        assert abs(e - e0) / abs(e0) < 1e-6, (
+            f"hydrogen E_gs differs across anchors: {e} vs {e0}")
+
+
 def test_report_runs(solver):
     solver.solve_harmonic(n_states=3, omega=1.0, mass=1.0, hbar=1.0,
                           r_max=12.0, N=2000)

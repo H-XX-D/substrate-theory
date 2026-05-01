@@ -163,3 +163,57 @@ def test_report_runs_and_returns_string(engine, capsys):
     captured = capsys.readouterr()
     assert "deuteron" in captured.out
     assert "muon" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# Drag-as-mass-generator API
+# ---------------------------------------------------------------------------
+
+def test_cone_bouncing_freq_baseline(engine):
+    # With unit primitives and default f_int=1, omega_b should be 1.0
+    assert math.isclose(engine.cone_bouncing_freq(), 1.0, rel_tol=1e-12)
+
+
+def test_cone_bouncing_freq_scales_with_drag(engine):
+    base = engine.cone_bouncing_freq()
+    doubled = engine.cone_bouncing_freq({"gamma": 2.0})
+    assert math.isclose(doubled, 2.0 * base, rel_tol=1e-12)
+
+
+def test_cone_bouncing_freq_sqrt_K(engine):
+    val = engine.cone_bouncing_freq({"K": 4.0})
+    assert math.isclose(val, 2.0, rel_tol=1e-12)
+
+
+def test_drag_torque_equals_omega_b(engine):
+    assert engine.drag_torque() == engine.cone_bouncing_freq()
+
+
+def test_electron_registered(engine):
+    assert "electron" in engine.list_configs()
+
+
+def test_electron_anchor_pinned(engine):
+    from src.stiff_medium.mass_torque_engine import M_ELECTRON_MEV
+    r = engine.compute("electron")
+    assert math.isclose(r.value_mev, M_ELECTRON_MEV, rel_tol=1e-12)
+
+
+def test_electron_verifies(engine):
+    v = engine.verify("electron")
+    assert v["passed"]
+    assert v["rel_err"] < 1e-9
+
+
+def test_verify_includes_drag_keys(engine):
+    v = engine.verify("muon")
+    assert "drag_torque" in v
+    assert "drag_share" in v
+    assert v["drag_torque"] > 0
+
+
+def test_report_includes_drag_column(engine, capsys):
+    engine.report()
+    captured = capsys.readouterr()
+    assert "drag" in captured.out
+    assert "electron" in captured.out

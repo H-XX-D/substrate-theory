@@ -243,6 +243,140 @@ class GenerationMap:
 
         return out
 
+    # ----------------------------------------------------------- drag mechanism
+    #
+    # Underlying mechanism for ALL fermion masses:
+    #     m = hbar * omega_b(gamma_gen, particle_type) / c^2
+    # where omega_b is the cone-bouncing angular frequency in the stiff
+    # medium, set by the substrate drag coefficient gamma at each
+    # generation. Mass ratios m_mu/m_e, m_tau/m_e are RELATIONS between
+    # drag-derived masses --- the exp(n_M / (16 pi)) and exp(n_M / (30 pi))
+    # forms ARE the inter-generation drag scale ratios.
+    #
+    # Anchor: gamma_1 chosen so generation-1 lepton mass = m_e (PDG).
+    # Then gamma_2 = gamma_1 * exp(n_M/(K_pair^4 * pi))
+    #      gamma_3 = gamma_2 * exp(n_M/(K_rank*(K_rank+1)*pi))
+    #
+    # Particle-type prefactor f(particle_type) absorbs sector-dependent
+    # coupling (1.0 for charged leptons by definition; quarks/neutrinos
+    # carry sector-specific multiplicative factors handled elsewhere).
+
+    def gen_drag_scale(self, generation: int) -> float:
+        """
+        Substrate drag coefficient gamma_gen at the given generation.
+
+        Returned in MeV-equivalent units: gamma_gen ~ hbar * omega_b / c^2
+        for a unit particle-type prefactor. Anchored such that
+        gen_drag_scale(1) reproduces m_e exactly.
+        """
+        if generation not in (1, 2, 3):
+            raise ValueError(f"generation must be 1, 2, or 3 (got {generation})")
+        gamma_1 = self.electron_mass_anchor()
+        if generation == 1:
+            return gamma_1
+        if generation == 2:
+            return gamma_1 * float(np.exp(self.n_M / self._denominator_12()))
+        # generation == 3
+        gamma_2 = gamma_1 * float(np.exp(self.n_M / self._denominator_12()))
+        return gamma_2 * float(np.exp(self.n_M / self._denominator_23()))
+
+    def electron_mass_anchor(self) -> float:
+        """
+        Anchor the generation-1 drag scale so that
+        mass_from_drag(1, 'lepton') = m_e (PDG).
+        Returns gamma_1 in MeV-equivalent units.
+        """
+        return LEPTON_MASSES_MEV["e"]
+
+    def mass_from_drag(
+        self, generation: int, particle_type: str = "lepton"
+    ) -> float:
+        """
+        Mass from the drag-cone-bouncing mechanism:
+            m = hbar * omega_b(gamma_gen, particle_type) / c^2
+        Implemented as gamma_gen * f(particle_type) in MeV.
+
+        particle_type: 'lepton' (f=1, anchored), 'up_quark', 'down_quark',
+        or 'neutrino'. Non-lepton prefactors are placeholders carrying
+        only the sector ratio --- absolute neutrino/quark scales are not
+        the subject of this drag formulation here.
+        """
+        gamma = self.gen_drag_scale(generation)
+        prefactors = {
+            "lepton": 1.0,
+            "up_quark": UP_QUARK_MASSES_MEV["u"] / LEPTON_MASSES_MEV["e"],
+            "down_quark": DOWN_QUARK_MASSES_MEV["d"] / LEPTON_MASSES_MEV["e"],
+            "neutrino": 1.0e-9,  # rough placeholder, eV-scale
+        }
+        if particle_type not in prefactors:
+            raise ValueError(
+                f"unknown particle_type {particle_type!r}; "
+                f"valid: {list(prefactors)}"
+            )
+        return gamma * prefactors[particle_type]
+
+    def predict_lepton_masses_from_drag(self) -> Dict[str, float]:
+        """
+        Returns the three charged-lepton masses (MeV) derived from the
+        drag scaling, anchored at m_e.
+        """
+        return {
+            "e":   self.mass_from_drag(1, "lepton"),
+            "mu":  self.mass_from_drag(2, "lepton"),
+            "tau": self.mass_from_drag(3, "lepton"),
+        }
+
+    def verify_drag_consistency(self) -> Dict[str, Dict[str, float]]:
+        """
+        Cross-check: drag-derived ratios m_mu/m_e and m_tau/m_e must
+        equal the direct exp(n_M/...) lepton_ratio values. If not, the
+        drag formulation is internally inconsistent.
+        """
+        masses = self.predict_lepton_masses_from_drag()
+        drag_mu_e = masses["mu"] / masses["e"]
+        drag_tau_e = masses["tau"] / masses["e"]
+        drag_tau_mu = masses["tau"] / masses["mu"]
+        return {
+            "mu/e":   _row(drag_mu_e,   self.lepton_ratio(2, 1)),
+            "tau/mu": _row(drag_tau_mu, self.lepton_ratio(3, 2)),
+            "tau/e":  _row(drag_tau_e,  self.lepton_ratio(3, 1)),
+        }
+
+    def report_drag_scales(self) -> str:
+        """
+        Print the substrate drag coefficient gamma_gen at each generation
+        with substrate-ontology interpretation.
+        """
+        lines = []
+        lines.append("=" * 72)
+        lines.append("Substrate Drag Scales --- gamma_gen at each generation")
+        lines.append("  gamma = hbar * omega_b(cone-bounce) / c^2")
+        lines.append(
+            "  Anchor: gamma_1 := m_e (PDG) so charged-lepton masses are "
+            "drag-derived"
+        )
+        lines.append("=" * 72)
+        labels = {1: "electron", 2: "muon", 3: "tau"}
+        for gen in (1, 2, 3):
+            gamma = self.gen_drag_scale(gen)
+            lines.append(
+                f"  gen {gen} ({labels[gen]:<8}): gamma = {gamma:>14.6f} MeV"
+            )
+        lines.append("")
+        lines.append("Inter-generation drag ratios (substrate topology):")
+        lines.append(
+            f"  gamma_2/gamma_1 = exp(n_M/(K_pair^4 pi)) = "
+            f"{self.lepton_ratio(2,1):.6f}"
+        )
+        lines.append(
+            f"  gamma_3/gamma_2 = exp(n_M/(K_rank(K_rank+1) pi)) = "
+            f"{self.lepton_ratio(3,2):.6f}"
+        )
+        lines.append("=" * 72)
+        text = "\n".join(lines)
+        print(text)
+        return text
+
     # ---------------------------------------------------------------- report
 
     def report(self) -> str:

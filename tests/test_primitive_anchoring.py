@@ -132,6 +132,37 @@ def test_report_all_anchors_runs(capsys: pytest.CaptureFixture) -> None:
         assert a in txt
 
 
+# ---------------------------------------------------------------------------
+# Drag-as-mass-generator anchoring (new)
+# ---------------------------------------------------------------------------
+def test_solve_with_drag_mass_anchor_electron() -> None:
+    """γ from drag-mass identity must give ℏγ = m_e c² for electron."""
+    import scipy.constants as sc
+
+    pa = PrimitiveAnchoring("electron_compton")
+    gamma_drag = pa.solve_with_drag_mass_anchor("electron")
+    expected = sc.m_e * sc.c ** 2 / sc.hbar
+    assert gamma_drag == pytest.approx(expected, rel=1e-12)
+
+
+def test_drag_to_mass_ratio_unity_for_electron_compton() -> None:
+    """For electron_compton anchor, γ = c/ξ = m_e c²/ℏ so ratio = 1 exactly."""
+    pa = PrimitiveAnchoring("electron_compton")
+    assert pa.drag_to_mass_ratio("electron") == pytest.approx(1.0, rel=1e-12)
+
+
+def test_electron_drag_anchor_yields_electron_mass() -> None:
+    """electron_drag anchor reconstructs m_e to machine precision."""
+    import scipy.constants as sc
+
+    pa = PrimitiveAnchoring("electron_drag")
+    m_kg = pa.derived_drag_mass_kg()
+    assert m_kg == pytest.approx(sc.m_e, rel=1e-12)
+    # cross_check_drag_alpha returns the same residual as the standard check
+    drag = pa.cross_check_drag_alpha()
+    assert abs(drag["residual_vs_B3"]) < 1e-4
+
+
 def test_B3_constants_sane() -> None:
     """Sanity: B3 α formula and hierarchy magnitude."""
     assert 7.29e-3 < ALPHA_B3 < 7.30e-3

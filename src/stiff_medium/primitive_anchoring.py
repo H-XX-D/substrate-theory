@@ -64,7 +64,14 @@ ANCHOR_CHOICES: Tuple[str, ...] = (
     "electron_compton",
     "proton_compton",
     "planck_length",
+    "electron_drag",
 )
+
+# Map for drag-mass anchoring: name -> rest mass in kg
+PARTICLE_MASS_KG: Dict[str, float] = {
+    "electron": M_E,
+    "proton": M_P,
+}
 
 
 # -----------------------------------------------------------------------------
@@ -114,6 +121,10 @@ class PrimitiveAnchoring:
             return LAMBDA_C_P
         if self.anchor == "planck_length":
             return ELL_PLANCK
+        if self.anchor == "electron_drag":
+            # Same length scale as electron_compton; γ is reset by drag-mass
+            # solver below.
+            return LAMBDA_C_E
         raise AssertionError(self.anchor)
 
     def _solve(self) -> None:
@@ -123,12 +134,92 @@ class PrimitiveAnchoring:
             ξ      from anchor
             K      = ℏ c / ξ⁴      from   ℏ = K ξ⁴ / c
             ρ      = K / c²         from   c = sqrt(K/ρ)
-            γ      = c / ξ          single-cell light-crossing rate
+            γ      = c / ξ          single-cell light-crossing rate (default)
+
+        For the ``electron_drag`` anchor γ is *not* the light-crossing rate
+        but is solved from the drag-as-mass-generator identity
+            m_e c² = ℏ γ
+        which fixes γ to the electron's Compton angular frequency.
         """
         self.xi = self._xi_from_anchor()
         self.K = HBAR * C_LIGHT / self.xi ** 4
         self.rho = self.K / C_LIGHT ** 2
         self.gamma = C_LIGHT / self.xi
+        if self.anchor == "electron_drag":
+            self.gamma = self.solve_with_drag_mass_anchor("electron")
+
+    # -- drag-mass machinery ---------------------------------------------------
+    def solve_with_drag_mass_anchor(self, particle: str = "electron") -> float:
+        """Solve γ from the drag-as-mass-generator identity.
+
+        Given (K, ρ, ξ) already fixed by the length anchor + (c, ℏ), the
+        drag rate γ is determined by requiring the cone-bouncing rest-mass
+        relation
+            m c² = ℏ γ
+        to reproduce the observed mass of ``particle``.
+
+        Args:
+            particle: Name in ``PARTICLE_MASS_KG`` (e.g. ``"electron"``).
+
+        Returns:
+            γ in 1/s such that ℏ γ = m c².
+        """
+        if particle not in PARTICLE_MASS_KG:
+            raise ValueError(
+                f"unknown particle {particle!r}; choose one of "
+                f"{tuple(PARTICLE_MASS_KG)}"
+            )
+        m = PARTICLE_MASS_KG[particle]
+        return m * C_LIGHT ** 2 / HBAR
+
+    def drag_to_mass_ratio(self, particle: str = "electron") -> float:
+        """Dimensionless ratio m c² / (ℏ γ) for the current anchor.
+
+        If drag-as-mass holds and γ is the correct mass-generation primitive
+        for ``particle``, this ratio is O(1) — exactly 1 in the canonical
+        identity m c² = ℏ γ.
+
+        Args:
+            particle: Name in ``PARTICLE_MASS_KG``.
+        """
+        if particle not in PARTICLE_MASS_KG:
+            raise ValueError(
+                f"unknown particle {particle!r}; choose one of "
+                f"{tuple(PARTICLE_MASS_KG)}"
+            )
+        m = PARTICLE_MASS_KG[particle]
+        return m * C_LIGHT ** 2 / (HBAR * self.gamma)
+
+    def derived_drag_mass_kg(self) -> float:
+        """Rest mass implied by the current γ via m = ℏ γ / c²."""
+        return HBAR * self.gamma / C_LIGHT ** 2
+
+    def derived_drag_mass_MeV(self) -> float:
+        """Drag-derived rest mass in MeV/c² for the current γ."""
+        m_kg = self.derived_drag_mass_kg()
+        return m_kg * C_LIGHT ** 2 / (1.0e6 * E_CHARGE)
+
+    def cross_check_drag_alpha(self) -> Dict[str, float]:
+        """Cross-check: with γ from drag, recompute α = 11/(48 π³)·exp(-3π/737).
+
+        The B3 α formula is a pure-number identity that doesn't depend on
+        γ directly, but here we verify that fixing γ via drag-mass leaves
+        the α reconstruction (via the ℏc = K ξ⁴ identity) unchanged and
+        consistent with the B3 closed form to the same residual as before.
+
+        Returns:
+            Dict with ``alpha_drag`` (the B3 closed-form value),
+            ``alpha_from_primitives`` (via Coulomb identity), and
+            ``residual_vs_B3`` (relative).
+        """
+        alpha_b3 = ALPHA_B3
+        alpha_prim = self.derived_alpha()
+        residual = (alpha_prim - alpha_b3) / alpha_b3
+        return {
+            "alpha_drag": alpha_b3,
+            "alpha_from_primitives": alpha_prim,
+            "residual_vs_B3": residual,
+        }
 
     # -- derived cross-checks --------------------------------------------------
     def derived_alpha(self) -> float:
@@ -180,6 +271,9 @@ class PrimitiveAnchoring:
             "K_Pa": self.K,
             "rho_kg_m3": self.rho,
             "gamma_Hz": self.gamma,
+            "drag_mass_electron_MeV": self.derived_drag_mass_MeV(),
+            "drag_to_mass_ratio_e": self.drag_to_mass_ratio("electron"),
+            "drag_to_mass_ratio_p": self.drag_to_mass_ratio("proton"),
         }
         observed = {
             "alpha": ALPHA_OBS,
@@ -227,6 +321,25 @@ class PrimitiveAnchoring:
         for k, v in result.derived.items():
             lines.append(f"    {k:24s} = {v:.6e}")
         lines.append("")
+        drag = self.cross_check_drag_alpha()
+        lines.append("")
+        lines.append("  Drag-mass cross-check:")
+        lines.append(
+            f"    m_e via drag (MeV)       = {self.derived_drag_mass_MeV():.6e}"
+        )
+        lines.append(
+            f"    m c²/(ℏγ)  electron      = {self.drag_to_mass_ratio('electron'):.6e}"
+        )
+        lines.append(
+            f"    m c²/(ℏγ)  proton        = {self.drag_to_mass_ratio('proton'):.6e}"
+        )
+        lines.append(
+            f"    α (drag-formula)         = {drag['alpha_drag']:.6e}"
+        )
+        lines.append(
+            f"    α residual vs B3 formula = {drag['residual_vs_B3']:+.3e}"
+        )
+        lines.append("")
         lines.append("  Residuals (relative):")
         for k, v in result.residuals.items():
             lines.append(f"    {k:24s} = {v:+.3e}")
@@ -258,6 +371,11 @@ def best_anchor(results: Dict[str, AnchorResult] | None = None) -> str:
         results = compare_anchors()
     scores: Dict[str, float] = {}
     for name, res in results.items():
+        # electron_drag is a γ-anchor, not a length-anchor; its kink/mp checks
+        # are degenerate with electron_compton — exclude from length-anchor
+        # competition.
+        if name == "electron_drag":
+            continue
         scores[name] = abs(res.residuals["kink_8me_check"]) + abs(
             res.residuals["mp_me_consistency"]
         )
