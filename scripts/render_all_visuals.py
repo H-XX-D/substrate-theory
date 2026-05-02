@@ -2733,6 +2733,433 @@ def render_solvation() -> list[str]:
     return out
 
 
+def render_dna() -> list[str]:
+    """Produce 68_dna_double_helix.png and 69_dna_mechanics.png.
+
+    68: 3D B-DNA double helix with two antiparallel sugar-phosphate
+        backbones, base-pair rungs colour-coded by Watson-Crick type
+        (A:T = orange, G:C = cyan), helical-axis line, and a labelled
+        full turn marker (pitch = 34 A).
+    69: DNA mechanics two-panel:
+         left  -- force-extension F(x/L) curve over the entropic
+                  WLC regime, the B->S transition plateau at ~ 65 pN,
+                  and the post-overstretch S-DNA branch
+         right -- persistence-length / elasticity summary with a
+                  bend-energy curve and L_p marker.
+    """
+    from src.stiff_medium.dna_substrate import (
+        AT_HBOND_KCAL_PER_MOL,
+        B_TO_S_EXTENSION_RATIO,
+        B_TO_S_FORCE_PN,
+        BP_PER_TURN,
+        GC_HBOND_KCAL_PER_MOL,
+        HELIX_PITCH_A,
+        HELIX_RADIUS_A,
+        KB_T_BODY_PN_NM,
+        RISE_PER_BP_A,
+        TWIST_PER_BP_DEG,
+        DNAGeometry,
+        DNASimulator,
+    )
+    out: list[str] = []
+
+    # ---- 68: 3D B-DNA double helix ------------------------------------
+    helix = DNAGeometry(
+        n_bp=42,
+        sequence="ATCGATGCAATCGGCTACGTACGTGCATCGATTACGGCATCG",
+    )
+    s1 = helix.strand1_coords()
+    s2 = helix.strand2_coords()
+
+    fig = plt.figure(figsize=(10, 9))
+    ax = fig.add_subplot(111, projection="3d")
+
+    # Sugar-phosphate backbones (antiparallel)
+    ax.plot(s1[:, 0], s1[:, 1], s1[:, 2], color="tab:blue",
+            linewidth=2.4, alpha=0.9, label="strand 1 (5'→3')")
+    ax.plot(s2[:, 0], s2[:, 1], s2[:, 2], color="tab:red",
+            linewidth=2.4, alpha=0.9, label="strand 2 (3'←5')")
+
+    # Phosphate marker beads
+    ax.scatter(s1[:, 0], s1[:, 1], s1[:, 2], color="tab:blue",
+               s=24, edgecolors="black", linewidths=0.4)
+    ax.scatter(s2[:, 0], s2[:, 1], s2[:, 2], color="tab:red",
+               s=24, edgecolors="black", linewidths=0.4)
+
+    # Base-pair rungs colored by Watson-Crick type
+    seq1 = helix.sequence
+    at_drawn = False
+    gc_drawn = False
+    for i in range(helix.n_bp):
+        b = seq1[i].upper()
+        if b in ("A", "T"):
+            color = "tab:orange"
+            label = "A:T (2 H-bonds, ~7 kcal/mol)" if not at_drawn else None
+            at_drawn = True
+        else:
+            color = "tab:cyan"
+            label = "G:C (3 H-bonds, ~10 kcal/mol)" if not gc_drawn else None
+            gc_drawn = True
+        ax.plot([s1[i, 0], s2[i, 0]],
+                [s1[i, 1], s2[i, 1]],
+                [s1[i, 2], s2[i, 2]],
+                color=color, linewidth=1.6, alpha=0.85,
+                label=label)
+
+    # Helix axis
+    z_axis = np.linspace(0, helix.contour_length_A, 50)
+    ax.plot(np.zeros_like(z_axis), np.zeros_like(z_axis), z_axis,
+            "k--", linewidth=0.8, alpha=0.45, label="helix axis (z)")
+
+    # Mark one full turn (pitch ~ 34 A) with a vertical bracket
+    z_turn = HELIX_PITCH_A
+    ax.plot([HELIX_RADIUS_A * 1.4, HELIX_RADIUS_A * 1.4],
+            [0, 0], [0, z_turn],
+            color="purple", linewidth=2.0, alpha=0.7)
+    ax.text(HELIX_RADIUS_A * 1.55, 0.0, z_turn / 2.0,
+            f"pitch = {HELIX_PITCH_A:.1f} Å\n({BP_PER_TURN} bp/turn)",
+            fontsize=9, color="purple")
+
+    ax.set_title(
+        f"B-DNA double helix from substrate\n"
+        f"rise = {RISE_PER_BP_A} Å/bp,  {BP_PER_TURN} bp/turn,  "
+        f"radius = {HELIX_RADIUS_A:.0f} Å,  twist = {TWIST_PER_BP_DEG:.2f}°/bp"
+    )
+    ax.set_xlabel("x [Å]")
+    ax.set_ylabel("y [Å]")
+    ax.set_zlabel("z [Å] (helix axis)")
+    ax.legend(loc="upper left", fontsize=8)
+    L = HELIX_RADIUS_A * 1.7
+    ax.set_xlim(-L, L)
+    ax.set_ylim(-L, L)
+    ax.set_zlim(0, helix.contour_length_A)
+    out.append(save(fig, "68_dna_double_helix.png"))
+
+    # ---- 69: DNA mechanics (force-extension + persistence length) ------
+    sim = DNASimulator()
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+
+    # ---- Left: force-extension F(x/L) ---------------------------------
+    ax_l = axes[0]
+    x_high, f_high = sim.force_extension_curve(np.linspace(0.001, 1.85, 600))
+    x_wlc = np.linspace(0.001, 0.985, 200)
+    f_wlc = sim.marko_siggia_force_pn(x_wlc)
+
+    ax_l.plot(x_wlc, f_wlc, "b--", linewidth=1.2, alpha=0.7,
+              label="Marko–Siggia WLC (entropic)")
+    ax_l.plot(x_high, f_high, "k-", linewidth=2.0, label="composite F(x/L)")
+    ax_l.axhline(B_TO_S_FORCE_PN, color="red", linestyle=":",
+                 linewidth=1.3, alpha=0.7,
+                 label=f"B→S force F* = {B_TO_S_FORCE_PN:.0f} pN")
+    ax_l.axvline(1.0, color="gray", linestyle=":", linewidth=0.8, alpha=0.6)
+    ax_l.axvline(B_TO_S_EXTENSION_RATIO, color="purple",
+                 linestyle=":", linewidth=0.8, alpha=0.6,
+                 label=f"S-DNA extension = {B_TO_S_EXTENSION_RATIO:.1f} L₀")
+
+    ax_l.annotate("B-DNA\n(entropic + linear)",
+                  xy=(0.7, 5), xytext=(0.45, 30),
+                  arrowprops=dict(arrowstyle="->", color="navy", lw=0.8),
+                  fontsize=9, color="navy")
+    ax_l.annotate("B→S transition\nplateau",
+                  xy=(1.35, B_TO_S_FORCE_PN),
+                  xytext=(1.15, 100),
+                  arrowprops=dict(arrowstyle="->", color="red", lw=0.8),
+                  fontsize=9, color="red")
+    ax_l.annotate("S-DNA\nstretching",
+                  xy=(1.78, 130),
+                  xytext=(1.45, 160),
+                  arrowprops=dict(arrowstyle="->", color="purple", lw=0.8),
+                  fontsize=9, color="purple")
+
+    ax_l.set_xlabel("Extension  x / L₀")
+    ax_l.set_ylabel("Force F  [pN]")
+    ax_l.set_xlim(0.0, 1.85)
+    ax_l.set_ylim(0.0, 200.0)
+    ax_l.set_title(
+        f"DNA force–extension: WLC + B→S transition\n"
+        f"L_p = {sim.persistence_length_nm:.0f} nm,  "
+        f"S = {sim.stretch_modulus_pn:.0f} pN"
+    )
+    ax_l.grid(True, alpha=0.3)
+    ax_l.legend(loc="upper left", fontsize=8)
+
+    # ---- Right: persistence length / elasticity summary ----------------
+    ax_r = axes[1]
+    L_nm = np.linspace(1.0, 200.0, 400)
+    kappa = sim.bending_modulus_pn_nm2()  # pN nm^2 = L_p * kT
+    E_bend = kappa / (2.0 * L_nm)         # 1-rad bend, pN nm
+    E_bend_kT = E_bend / KB_T_BODY_PN_NM
+
+    ax_r.plot(L_nm, E_bend_kT, "b-", linewidth=2.0,
+              label="bend energy (1 rad) / kT = L_p / (2 L)")
+    ax_r.axvline(sim.persistence_length_nm, color="red", linestyle="--",
+                 linewidth=1.5,
+                 label=f"L_p = {sim.persistence_length_nm:.0f} nm "
+                       f"(~{sim.persistence_length_bp():.0f} bp)")
+    ax_r.axhline(0.5, color="gray", linestyle=":", linewidth=0.8,
+                 label="kT/2 reference")
+
+    ax_r.set_xlabel("Contour length L [nm]")
+    ax_r.set_ylabel("Bend energy / kT")
+    ax_r.set_xlim(0, 200)
+    ax_r.set_ylim(0, 8)
+    ax_r.set_title(
+        f"Persistence length & elasticity\n"
+        f"AT: {AT_HBOND_KCAL_PER_MOL:.0f} kcal/mol  •  GC: {GC_HBOND_KCAL_PER_MOL:.0f} kcal/mol  "
+        f"(ratio {GC_HBOND_KCAL_PER_MOL / AT_HBOND_KCAL_PER_MOL:.2f}, "
+        f"H-bond count 3/2 = 1.50)"
+    )
+    ax_r.grid(True, alpha=0.3)
+    ax_r.legend(loc="upper right", fontsize=8)
+
+    fig.suptitle(
+        "DNA mechanics from substrate: WLC + B→S transition + persistence length",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "69_dna_mechanics.png"))
+
+    return out
+
+
+def render_membrane() -> list[str]:
+    """Produce 76_lipid_bilayer.png and 77_membrane_dynamics.png.
+
+    76: Cross-section of the lipid bilayer.  Two leaflets of phospholipids
+        with hydrophilic head groups exposed to water and hydrophobic
+        tails buried in the bilayer interior.  Annotated with the
+        canonical 4 nm head-to-head thickness, head/tail layer thicknesses,
+        and a top view showing the fluid-mosaic model with integral
+        membrane proteins embedded in the bilayer.
+    77: Membrane dynamics --- left panel: lateral diffusion (random walk
+        of single lipids) producing the Saffman-Delbrueck mean-square
+        displacement <r^2> = 4 D t with D = 1 micron^2/s.  Middle panel:
+        MSD vs t (Einstein relation).  Right panel: Helfrich bending
+        modes (1,1) and (2,1) standing waves on a square membrane patch.
+    """
+    import math as _math
+    from src.stiff_medium.membrane_substrate import (
+        BENDING_MODULUS_KT,
+        MembraneGeometry,
+        MembraneSimulator,
+    )
+    out: list[str] = []
+
+    geom = MembraneGeometry(n_lipids_per_leaflet=64)
+    sim = MembraneSimulator(geometry=geom)
+
+    # ---- 76: cross-section of the bilayer (heads + tails) -------------
+    fig = plt.figure(figsize=(14, 7))
+
+    # Left panel: side-view cross section ------------------------------
+    ax = fig.add_subplot(1, 2, 1)
+    side = geom.patch_side_length_nm()
+    d = geom.bilayer_thickness_nm
+    d_head = geom.head_thickness_nm
+    d_tail = geom.tail_thickness_nm
+    head_d = geom.head_diameter_nm
+    tail_d = geom.tail_diameter_nm
+
+    ax.add_patch(plt.Rectangle((-side / 2, +d / 2), side, 1.5,
+                               facecolor="#cfe9ff", alpha=0.55,
+                               edgecolor="none",
+                               label="water (extracellular)"))
+    ax.add_patch(plt.Rectangle((-side / 2, -d / 2 - 1.5), side, 1.5,
+                               facecolor="#cfe9ff", alpha=0.55,
+                               edgecolor="none",
+                               label="water (cytosol)"))
+
+    ax.add_patch(plt.Rectangle((-side / 2, -d_tail), side, 2 * d_tail,
+                               facecolor="#fff0c2", alpha=0.45,
+                               edgecolor="orange", linewidth=0.8,
+                               label=f"hydrophobic tail core ({2*d_tail:.1f} nm)"))
+
+    upper = geom.lipid_head_positions("upper")
+    n_show = 18
+    xs = np.linspace(-side / 2 + head_d / 2, side / 2 - head_d / 2, n_show)
+    head_radius = head_d / 2.0
+    for x in xs:
+        ax.add_patch(plt.Circle((x, +d / 2 - head_radius), head_radius,
+                                facecolor="tab:blue", edgecolor="navy",
+                                linewidth=0.6, alpha=0.95, zorder=4))
+        ax.add_patch(plt.Circle((x, -d / 2 + head_radius), head_radius,
+                                facecolor="tab:blue", edgecolor="navy",
+                                linewidth=0.6, alpha=0.95, zorder=4))
+        for dx in (-tail_d / 2, +tail_d / 2):
+            ax.plot([x + dx, x + dx],
+                    [+d / 2 - 2 * head_radius,
+                     +d / 2 - 2 * head_radius - d_tail - 0.05],
+                    color="tab:orange", linewidth=2.4, alpha=0.85,
+                    zorder=3)
+            ax.plot([x + dx, x + dx],
+                    [-d / 2 + 2 * head_radius,
+                     -d / 2 + 2 * head_radius + d_tail + 0.05],
+                    color="tab:orange", linewidth=2.4, alpha=0.85,
+                    zorder=3)
+
+    prot_x = side * 0.30
+    prot_w = 1.6
+    ax.add_patch(plt.Rectangle((prot_x - prot_w / 2, -d / 2), prot_w, d,
+                               facecolor="lightgreen",
+                               edgecolor="darkgreen",
+                               linewidth=1.2, alpha=0.85, zorder=5,
+                               label="integral membrane protein"))
+    ax.text(prot_x, 0.0, "TM\nprotein", ha="center", va="center",
+            fontsize=8, color="darkgreen",
+            fontweight="bold", zorder=6)
+
+    ax.annotate("", xy=(side / 2 + 0.4, +d / 2),
+                xytext=(side / 2 + 0.4, -d / 2),
+                arrowprops={"arrowstyle": "<->",
+                            "color": "black", "lw": 1.5})
+    ax.text(side / 2 + 0.6, 0.0, f"{d:.1f} nm\n(bilayer)",
+            ha="left", va="center", fontsize=10, fontweight="bold")
+    ax.annotate("", xy=(-side / 2 - 0.4, +d / 2),
+                xytext=(-side / 2 - 0.4, +d / 2 - d_head),
+                arrowprops={"arrowstyle": "<->",
+                            "color": "navy", "lw": 1.0})
+    ax.text(-side / 2 - 0.6, +d / 2 - d_head / 2,
+            f"head\n{d_head:.1f}nm",
+            ha="right", va="center", fontsize=8, color="navy")
+
+    ax.set_xlim(-side / 2 - 2.0, side / 2 + 3.0)
+    ax.set_ylim(-d / 2 - 2.0, +d / 2 + 2.0)
+    ax.set_aspect("equal")
+    ax.set_xlabel("x [nm]")
+    ax.set_ylabel("z [nm]")
+    ax.set_title(
+        f"Phospholipid bilayer cross-section (fluid-mosaic model)\n"
+        f"thickness = {d:.1f} nm (target 4.0 nm); "
+        f"area/lipid = {geom.area_per_lipid_nm2:.2f} nm^2"
+    )
+    ax.legend(loc="upper left", fontsize=8, framealpha=0.85)
+    ax.grid(True, alpha=0.2)
+
+    ax2 = fig.add_subplot(1, 2, 2)
+    upper_xy = upper[:, :2]
+    ax2.scatter(upper_xy[:, 0], upper_xy[:, 1],
+                s=110, c="tab:blue", edgecolors="navy",
+                linewidths=0.5, alpha=0.85,
+                label="lipid head (upper leaflet)")
+    proteins = geom.integral_protein_positions(
+        n_proteins=4, radius_nm=1.0,
+        rng=np.random.default_rng(seed=2),
+    )
+    for p in proteins:
+        ax2.add_patch(plt.Circle((p[0], p[1]), 1.0,
+                                 facecolor="lightgreen",
+                                 edgecolor="darkgreen",
+                                 linewidth=1.4, alpha=0.85, zorder=5))
+    ax2.scatter([], [], s=120, marker="o", facecolor="lightgreen",
+                edgecolors="darkgreen", linewidths=1.4,
+                label="integral protein")
+    L = side
+    ax2.set_xlim(-L / 2 - 0.5, L / 2 + 0.5)
+    ax2.set_ylim(-L / 2 - 0.5, L / 2 + 0.5)
+    ax2.set_aspect("equal")
+    ax2.set_xlabel("x [nm]")
+    ax2.set_ylabel("y [nm]")
+    ax2.set_title(
+        f"Membrane plane (top view): "
+        f"{geom.n_lipids_per_leaflet} lipids/leaflet\n"
+        f"patch = {L:.1f} x {L:.1f} nm^2; Singer-Nicolson 1972"
+    )
+    ax2.legend(loc="upper right", fontsize=9, framealpha=0.9)
+    ax2.grid(True, alpha=0.25)
+
+    fig.suptitle(
+        "Lipid bilayer from substrate: "
+        "amphiphilic self-assembly + fluid mosaic",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "76_lipid_bilayer.png"))
+
+    # ---- 77: dynamics (lateral diffusion + bending modes) -------------
+    fig = plt.figure(figsize=(15, 6))
+
+    ax = fig.add_subplot(1, 3, 1)
+    rng = np.random.default_rng(seed=42)
+    D_um2_s = sim.lateral_diffusion_coefficient_um2_per_s()
+    n_traj = 8
+    n_steps = 600
+    dt_s = 1.0e-3
+    sigma_um = _math.sqrt(2.0 * D_um2_s * dt_s)
+    trajs_um = rng.normal(0.0, sigma_um,
+                          size=(n_traj, n_steps, 2)).cumsum(axis=1)
+    cmap_obj = plt.get_cmap("tab10")
+    for k in range(n_traj):
+        ax.plot(trajs_um[k, :, 0], trajs_um[k, :, 1],
+                color=cmap_obj(k % 10), linewidth=0.9, alpha=0.85)
+        ax.scatter([trajs_um[k, 0, 0]], [trajs_um[k, 0, 1]],
+                   c="black", s=22, zorder=5)
+        ax.scatter([trajs_um[k, -1, 0]], [trajs_um[k, -1, 1]],
+                   c="red", s=22, zorder=5)
+    final_t = n_steps * dt_s
+    rms_um = _math.sqrt(4.0 * D_um2_s * final_t)
+    ax.scatter([], [], c="black", s=25, label="t = 0")
+    ax.scatter([], [], c="red", s=25, label=f"t = {final_t:.2f} s")
+    ax.set_aspect("equal")
+    ax.set_xlabel("x [um]")
+    ax.set_ylabel("y [um]")
+    ax.set_title(
+        f"Lateral diffusion (FRAP-like)\n"
+        f"D = {D_um2_s:.2f} um^2/s; "
+        f"rms displacement at {final_t:.2f} s = {rms_um:.3f} um"
+    )
+    ax.legend(loc="upper right", fontsize=8)
+    ax.grid(True, alpha=0.25)
+
+    ax2 = fig.add_subplot(1, 3, 2)
+    ts = np.linspace(0.001, 1.0, 100)
+    msd_theory = 4.0 * D_um2_s * ts
+    msd_emp = np.mean(np.sum(trajs_um ** 2, axis=2), axis=0)
+    t_emp = np.arange(n_steps) * dt_s
+    ax2.plot(t_emp, msd_emp, "b-", linewidth=1.5, alpha=0.65,
+             label="simulated MSD (8 trajectories)")
+    ax2.plot(ts, msd_theory, "r--", linewidth=2.0,
+             label=r"$\langle r^2\rangle = 4Dt$")
+    ax2.set_xlabel("time [s]")
+    ax2.set_ylabel("MSD [um^2]")
+    ax2.set_title(
+        f"Mean-square displacement (Einstein 2D)\n"
+        f"slope = 4D = {4.0 * D_um2_s:.2f} um^2/s"
+    )
+    ax2.legend(loc="upper left", fontsize=9)
+    ax2.grid(True, alpha=0.3)
+
+    ax3 = fig.add_subplot(1, 3, 3, projection="3d")
+    side_nm = 20.0
+    X, Y, Z = sim.bending_mode_shape(side_nm=side_nm, n_grid=60,
+                                     nx=1, ny=1, amplitude_nm=0.5)
+    X2, Y2, Z2 = sim.bending_mode_shape(side_nm=side_nm, n_grid=60,
+                                        nx=2, ny=1, amplitude_nm=0.3)
+    ax3.plot_surface(X, Y, Z, cmap="coolwarm", alpha=0.8,
+                     edgecolor="none")
+    ax3.plot_wireframe(X2, Y2, Z2 + 1.5, color="green",
+                       linewidth=0.4, alpha=0.65,
+                       rcount=20, ccount=20)
+    ax3.set_xlabel("x [nm]")
+    ax3.set_ylabel("y [nm]")
+    ax3.set_zlabel("h [nm]")
+    rms_h = sim.rms_undulation_amplitude_nm(patch_side_nm=side_nm)
+    ax3.set_title(
+        f"Helfrich bending modes (1,1) + (2,1)\n"
+        f"kappa = {BENDING_MODULUS_KT:.0f} kT; "
+        f"rms undulation ~ {rms_h:.2f} nm at L = {side_nm:.0f} nm"
+    )
+
+    fig.suptitle(
+        "Membrane dynamics from substrate: "
+        "lateral diffusion + Helfrich bending",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "77_membrane_dynamics.png"))
+
+    return out
+
+
 def render_protein() -> list[str]:
     """Produce 66_protein_folding.png and 67_ramachandran.png.
 
@@ -3614,6 +4041,720 @@ def render_crystals() -> list[str]:
     return out
 
 
+def render_photosynthesis() -> list[str]:
+    """Produce 72_chlorophyll_absorption.png and 73_photosystem_z_scheme.png.
+
+    72: Chlorophyll a + b absorption spectra over 350-750 nm.  Shows the
+        characteristic Soret (blue) and Qy (red) bands plus the green-light
+        gap that gives plants their color.
+    73: Z-scheme energy diagram --- electrons climb from H2O (+0.82 V) up to
+        NADPH (-0.32 V) by two photo-driven jumps at PS-II (P680) and PS-I
+        (P700).  Cofactors plotted vs E_h with the chain edges drawn between.
+    """
+    from src.stiff_medium.photosynthesis_substrate import (
+        PhotosynthesisGeometry,
+        PhotosynthesisSimulator,
+        Z_SCHEME_REDOX_eV,
+    )
+    out: list[str] = []
+
+    sim = PhotosynthesisSimulator()
+
+    # ----- 72: Chlorophyll absorption spectrum -----------------------------
+    fig, ax = plt.subplots(figsize=(11, 6.5))
+    wl = np.linspace(350.0, 750.0, 801)
+
+    g_a = PhotosynthesisGeometry(chlorophyll_type="chl_a")
+    g_b = PhotosynthesisGeometry(chlorophyll_type="chl_b")
+    spec_a = g_a.absorption_band(wl)
+    spec_b = g_b.absorption_band(wl)
+
+    # color-fill the visible spectrum behind the curves
+    visible_colors = [
+        (380, 440, "#7B00FF"),    # violet
+        (440, 485, "#0000FF"),    # blue
+        (485, 510, "#00FFFF"),    # cyan
+        (510, 565, "#00FF00"),    # green
+        (565, 590, "#FFFF00"),    # yellow
+        (590, 625, "#FFA500"),    # orange
+        (625, 700, "#FF0000"),    # red
+        (700, 750, "#8B0000"),    # dark red
+    ]
+    for lo, hi, color in visible_colors:
+        ax.axvspan(lo, hi, alpha=0.07, color=color, zorder=0)
+
+    ax.plot(wl, spec_a, color="darkgreen", linewidth=2.2,
+            label="Chlorophyll a (Soret 430 nm, Qy 662 nm)")
+    ax.plot(wl, spec_b, color="olivedrab", linewidth=2.2, linestyle="--",
+            label="Chlorophyll b (Soret 453 nm, Qy 642 nm)")
+
+    # mark the four canonical peaks with vertical dashed lines + text
+    peaks_a = g_a.absorption_peaks_nm()
+    peaks_b = g_b.absorption_peaks_nm()
+    for peak_nm, color, label, ya in [
+        (peaks_a["soret"], "darkgreen", "430", 3.15),
+        (peaks_a["qy"],    "darkgreen", "662", 1.10),
+        (peaks_b["soret"], "olivedrab", "453", 3.30),
+        (peaks_b["qy"],    "olivedrab", "642", 1.25),
+    ]:
+        ax.axvline(peak_nm, color=color, linestyle=":", linewidth=0.9,
+                   alpha=0.5)
+        ax.text(peak_nm, ya, f"{label} nm", fontsize=8.5,
+                ha="center", color=color, fontweight="bold",
+                bbox=dict(facecolor="white", edgecolor=color,
+                          alpha=0.85, pad=1.5, lw=0.6))
+
+    # green-light gap annotation
+    ax.annotate(
+        "Green-light gap\n(low absorption -> plants look green)",
+        xy=(540.0, 0.20), xytext=(540.0, 1.7),
+        fontsize=9, ha="center", color="darkgreen",
+        arrowprops=dict(arrowstyle="->", color="darkgreen", lw=1.0),
+    )
+
+    ax.set_xlim(350.0, 750.0)
+    ax.set_ylim(0.0, 3.7)
+    ax.set_xlabel("Wavelength (nm)", fontsize=12)
+    ax.set_ylabel("Absorption (oscillator-strength weighted)", fontsize=12)
+    ax.set_title(
+        "Chlorophyll a + b absorption spectrum from substrate strain modes\n"
+        "Tetrapyrrole macrocycle: Soret (blue) + Qy (red) eigenmodes "
+        "with sigma~10 nm Gaussian broadening",
+        fontsize=11,
+    )
+    ax.legend(fontsize=10, loc="upper right")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    out.append(save(fig, "72_chlorophyll_absorption.png"))
+
+    # ----- 73: Z-scheme energy diagram -------------------------------------
+    chain = sim.z_scheme()
+    n = len(chain)
+    xs = np.arange(n, dtype=float)
+    es = np.array([e for _, e in chain])
+    names = [name for name, _ in chain]
+
+    fig, ax = plt.subplots(figsize=(13, 8))
+
+    # Group color: PS-II side (light blue), PS-I side (light orange)
+    ps2_idx = list(range(1, 9))   # P680 .. PC
+    ps1_idx = list(range(9, n))   # P700 .. NADPH
+
+    # Connect cofactors with arrows: downhill in normal transfer, uphill at photons
+    for i in range(n - 1):
+        delta = es[i + 1] - es[i]
+        if delta < -0.5:
+            # Photo-driven uphill jump (in E_h sense: more negative)
+            ax.annotate("", xy=(xs[i + 1], es[i + 1]),
+                        xytext=(xs[i], es[i]),
+                        arrowprops=dict(arrowstyle="->",
+                                        color="gold", lw=2.6,
+                                        alpha=0.95,
+                                        connectionstyle="arc3,rad=-0.3"))
+        else:
+            ax.annotate("", xy=(xs[i + 1], es[i + 1]),
+                        xytext=(xs[i], es[i]),
+                        arrowprops=dict(arrowstyle="->",
+                                        color="dimgray", lw=1.4,
+                                        alpha=0.85))
+
+    # Plot cofactor markers
+    for i, (name, e) in enumerate(chain):
+        if name == "H2O/O2":
+            color = "deepskyblue"; size = 220
+        elif name in ("P680", "P680*"):
+            color = "darkviolet"; size = 240
+        elif name in ("P700", "P700*"):
+            color = "crimson"; size = 240
+        elif name == "NADPH":
+            color = "forestgreen"; size = 220
+        elif "Cyt" in name or "PC" in name:
+            color = "darkorange"; size = 170
+        elif "F" in name and ("d" in name or "x" in name or "A" in name):
+            color = "saddlebrown"; size = 150
+        else:
+            color = "steelblue"; size = 140
+        ax.scatter([xs[i]], [es[i]], color=color, s=size,
+                   edgecolors="black", linewidths=1.0, zorder=10)
+
+    # Cofactor labels (offset above/below to avoid arrow paths)
+    label_offsets = {
+        "H2O/O2": (0.3, 0.10), "P680": (0.0, 0.10),
+        "P680*": (-0.1, -0.18), "Pheo": (0.0, -0.18),
+        "QA": (0.0, -0.18), "QB": (0.0, 0.10),
+        "PQ pool": (0.0, 0.10), "Cyt b6f": (0.0, 0.10),
+        "PC": (0.2, 0.10), "P700": (0.2, 0.10),
+        "P700*": (-0.1, -0.18), "A0": (0.0, -0.18),
+        "A1": (0.0, -0.18), "Fx": (0.0, -0.18),
+        "FA/FB": (0.0, -0.18), "Fd": (0.0, 0.10),
+        "FNR": (0.0, 0.10), "NADPH": (0.0, 0.10),
+    }
+    for i, (name, e) in enumerate(chain):
+        dx, dy = label_offsets.get(name, (0.0, 0.10))
+        ax.text(xs[i] + dx, e + dy, name, fontsize=8.5,
+                ha="center", va="bottom" if dy > 0 else "top",
+                fontweight="bold")
+
+    # Photon-jump labels
+    photon_jumps = []
+    for i in range(1, n):
+        if es[i] - es[i - 1] < -1.0:
+            photon_jumps.append(i)
+    for j in photon_jumps:
+        x_mid = (xs[j - 1] + xs[j]) / 2.0
+        e_mid = (es[j - 1] + es[j]) / 2.0
+        if names[j].startswith("P680"):
+            label = "hv\n680 nm\n(1.823 eV)"
+        else:
+            label = "hv\n700 nm\n(1.771 eV)"
+        ax.text(x_mid - 0.3, e_mid + 0.05, label, fontsize=10,
+                ha="center", color="darkgoldenrod", fontweight="bold",
+                bbox=dict(facecolor="lightyellow", edgecolor="gold",
+                          alpha=0.9, pad=3.0, lw=1.0))
+
+    # System brackets at the bottom
+    ax.axhspan(es.min() - 0.4, es.min() - 0.2, alpha=0.0)
+    ax.text(np.mean([xs[i] for i in ps2_idx[:3]]),
+            es.min() - 0.15,
+            "PS-II   (water-splitting)",
+            fontsize=11, ha="center", color="darkviolet",
+            fontweight="bold")
+    ax.text(np.mean([xs[i] for i in ps1_idx[:3]]),
+            es.min() - 0.15,
+            "PS-I   (NADP+ -> NADPH)",
+            fontsize=11, ha="center", color="crimson",
+            fontweight="bold")
+
+    # Stoichiometry text
+    ax.text(0.02, 0.97,
+            "Z-scheme stoichiometry (per O$_2$):\n"
+            "   8 photons absorbed  (4 PS-II + 4 PS-I)\n"
+            "   2 H$_2$O split  ->  4 e$^-$ + 4 H$^+$ + 1 O$_2$\n"
+            "   12 H$^+$ pumped across thylakoid\n"
+            "   2 NADPH + ~3 ATP produced\n"
+            "Light-harvesting QY ~ 95%",
+            transform=ax.transAxes, fontsize=10,
+            verticalalignment="top", color="#222",
+            bbox=dict(facecolor="white", edgecolor="gray", alpha=0.9, pad=6))
+
+    ax.set_xticks([])
+    ax.set_xlim(-0.5, n - 0.5)
+    ax.set_ylim(es.min() - 0.4, es.max() + 0.4)
+    ax.set_ylabel("Redox potential E$_h$ (V) at pH 7",
+                  fontsize=12)
+    ax.set_title(
+        "Photosystem Z-scheme: PS-II -> Cyt b$_6$f -> PS-I -> NADPH\n"
+        "Two photons (gold curves) drive electrons uphill from H$_2$O to NADPH; "
+        "downhill steps (gray) couple to proton pumping",
+        fontsize=11,
+    )
+    ax.invert_yaxis()   # convention: more negative = up = stronger reductant
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    out.append(save(fig, "73_photosystem_z_scheme.png"))
+
+    return out
+
+
+def render_neural() -> list[str]:
+    """Produce 70_action_potential.png and 71_hh_gating.png.
+
+    70: V(t) trace of a single Hodgkin-Huxley action potential with the
+        canonical resting / threshold / peak voltages annotated and a
+        second-pulse panel demonstrating the absolute refractory period
+        (a stimulus delivered 1 ms after the first fails to fire a 2nd AP,
+        while a stimulus delivered 20 ms later succeeds).
+    71: Gating-variables m, h, n vs t over the same AP window plus the
+        steady-state activation curves m_inf(V), h_inf(V), n_inf(V).
+    """
+    from src.stiff_medium.neural_substrate import (
+        ABSOLUTE_REFRACTORY_MS,
+        E_K_DEFAULT,
+        E_L_DEFAULT,
+        E_NA_DEFAULT,
+        V_MYELINATED_M_PER_S,
+        V_PEAK_TYP,
+        V_REST,
+        V_THRESHOLD,
+        V_UNMYELINATED_M_PER_S,
+        NeuralGeometry,
+        NeuralSimulator,
+        _hh_alpha_h,
+        _hh_alpha_m,
+        _hh_alpha_n,
+        _hh_beta_h,
+        _hh_beta_m,
+        _hh_beta_n,
+    )
+    out: list[str] = []
+
+    geom = NeuralGeometry()
+    sim = NeuralSimulator(geometry=geom, duration_ms=50.0)
+
+    # Single AP for 70 (top) and 71
+    res = sim.simulate(
+        I_inj_uA_per_cm2=15.0,
+        stim_start_ms=5.0,
+        stim_duration_ms=1.0,
+    )
+
+    # Refractory pair for 70 (bottom)
+    sim_ref = NeuralSimulator(geometry=geom, duration_ms=60.0)
+    res_close = sim_ref.simulate(
+        I_inj_uA_per_cm2=15.0,
+        stim_start_ms=5.0,
+        stim_duration_ms=1.0,
+        second_stim_ms=6.0,
+        second_stim_duration_ms=1.0,
+    )
+    res_far = sim_ref.simulate(
+        I_inj_uA_per_cm2=15.0,
+        stim_start_ms=5.0,
+        stim_duration_ms=1.0,
+        second_stim_ms=25.0,
+        second_stim_duration_ms=1.0,
+    )
+
+    # ---------------- 70: action-potential trace ------------------------
+    fig = plt.figure(figsize=(13, 9))
+
+    # Top: single AP with milestones annotated
+    ax_top = plt.subplot2grid((2, 2), (0, 0), colspan=2)
+    ax_top.plot(res["t_ms"], res["V_mV"], color="tab:blue", linewidth=2.0,
+                label="V(t)")
+    ax_top.axhline(V_REST, color="gray", linestyle=":", linewidth=1.0,
+                   label=f"V_rest = {V_REST:.0f} mV")
+    ax_top.axhline(V_THRESHOLD, color="tab:orange", linestyle="--",
+                   linewidth=1.0,
+                   label=f"V_threshold = {V_THRESHOLD:.0f} mV")
+    ax_top.axhline(0.0, color="black", linestyle=":", linewidth=0.6,
+                   alpha=0.5)
+    peak_idx = int(np.argmax(res["V_mV"]))
+    peak_V = float(res["V_mV"][peak_idx])
+    peak_t = float(res["t_ms"][peak_idx])
+    ax_top.scatter([peak_t], [peak_V], s=80, c="tab:red", zorder=5,
+                   label=f"peak = {peak_V:.1f} mV")
+    ax_top.axhline(V_PEAK_TYP, color="tab:red", linestyle="--",
+                   linewidth=0.8, alpha=0.5,
+                   label=f"target peak = +{V_PEAK_TYP:.0f} mV")
+    # Stimulus shading
+    ax_top.axvspan(5.0, 6.0, color="tab:green", alpha=0.10,
+                   label="stimulus pulse")
+    # Phase labels
+    phases = [
+        (peak_t - 1.2, "depolarisation\n(Na+ in)", "tab:blue"),
+        (peak_t + 1.5, "repolarisation\n(K+ out)", "tab:purple"),
+        (peak_t + 5.5, "hyperpolarisation\n(K+ overshoot)", "tab:cyan"),
+    ]
+    for tx, label, color in phases:
+        if 0.0 <= tx <= sim.duration_ms:
+            ax_top.text(tx, V_REST - 18, label, fontsize=8, ha="center",
+                        color=color)
+    ax_top.set_xlabel("t [ms]")
+    ax_top.set_ylabel("V_membrane [mV]")
+    v_uny = V_UNMYELINATED_M_PER_S
+    v_myl = V_MYELINATED_M_PER_S
+    ax_top.set_title(
+        f"Hodgkin-Huxley action potential   "
+        f"(C_m=1 µF/cm², g_Na={geom.g_Na_max:.0f}, g_K={geom.g_K_max:.0f})\n"
+        f"conduction:  unmyelinated v ≈ {v_uny:.0f} m/s,  "
+        f"myelinated v ≈ {v_myl:.0f} m/s  (×{v_myl/v_uny:.0f} saltatory)"
+    )
+    ax_top.set_ylim(-90, 60)
+    ax_top.set_xlim(0, sim.duration_ms)
+    ax_top.legend(loc="upper right", fontsize=8, ncol=2)
+    ax_top.grid(True, alpha=0.3)
+
+    # Bottom-left: pulses 1 ms apart -- only 1 AP fires
+    ax_bl = plt.subplot2grid((2, 2), (1, 0))
+    ax_bl.plot(res_close["t_ms"], res_close["V_mV"], color="tab:blue",
+               linewidth=1.5)
+    ax_bl.axhline(V_THRESHOLD, color="tab:orange", linestyle="--",
+                  linewidth=0.8)
+    ax_bl.axvspan(5.0, 6.0, color="tab:green", alpha=0.10, label="pulse 1")
+    ax_bl.axvspan(6.0, 7.0, color="tab:red", alpha=0.18,
+                  label="pulse 2 (1 ms gap)")
+    n_spk_close = int(np.sum(
+        (res_close["V_mV"][:-1] < 0.0) & (res_close["V_mV"][1:] >= 0.0)
+    ))
+    ax_bl.set_title(
+        f"Two pulses 1 ms apart → {n_spk_close} AP\n"
+        f"(absolute refractory τ ≈ {ABSOLUTE_REFRACTORY_MS:.1f} ms blocks 2nd AP)"
+    )
+    ax_bl.set_xlabel("t [ms]"); ax_bl.set_ylabel("V [mV]")
+    ax_bl.set_xlim(0, 30)
+    ax_bl.set_ylim(-90, 60)
+    ax_bl.legend(loc="upper right", fontsize=8)
+    ax_bl.grid(True, alpha=0.3)
+
+    # Bottom-right: pulses 20 ms apart -- both APs fire
+    ax_br = plt.subplot2grid((2, 2), (1, 1))
+    ax_br.plot(res_far["t_ms"], res_far["V_mV"], color="tab:blue",
+               linewidth=1.5)
+    ax_br.axhline(V_THRESHOLD, color="tab:orange", linestyle="--",
+                  linewidth=0.8)
+    ax_br.axvspan(5.0, 6.0, color="tab:green", alpha=0.10, label="pulse 1")
+    ax_br.axvspan(25.0, 26.0, color="tab:purple", alpha=0.18,
+                  label="pulse 2 (20 ms gap)")
+    n_spk_far = int(np.sum(
+        (res_far["V_mV"][:-1] < 0.0) & (res_far["V_mV"][1:] >= 0.0)
+    ))
+    ax_br.set_title(
+        f"Two pulses 20 ms apart → {n_spk_far} APs\n"
+        f"(membrane recovered, second AP fires normally)"
+    )
+    ax_br.set_xlabel("t [ms]"); ax_br.set_ylabel("V [mV]")
+    ax_br.set_xlim(0, 60)
+    ax_br.set_ylim(-90, 60)
+    ax_br.legend(loc="upper right", fontsize=8)
+    ax_br.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Action potential from substrate: V(t) shape + refractory period\n"
+        "(B3 ontology: AP = strain pulse; refractory = h-gate re-arming "
+        "= cell re-saturation)",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "70_action_potential.png"))
+
+    # ---------------- 71: gating variables m, h, n ----------------------
+    fig = plt.figure(figsize=(13, 8))
+
+    # Top: V(t) for context
+    ax_v = plt.subplot2grid((3, 2), (0, 0), colspan=2)
+    ax_v.plot(res["t_ms"], res["V_mV"], color="tab:blue", linewidth=1.6)
+    ax_v.axhline(V_REST, color="gray", linestyle=":", linewidth=0.8)
+    ax_v.axhline(V_THRESHOLD, color="tab:orange", linestyle="--",
+                 linewidth=0.8)
+    ax_v.set_ylabel("V [mV]")
+    ax_v.set_xlim(0, sim.duration_ms)
+    ax_v.set_title("Membrane potential V(t)")
+    ax_v.grid(True, alpha=0.3)
+
+    # Middle-left: m, h, n vs time
+    ax_g = plt.subplot2grid((3, 2), (1, 0), rowspan=2)
+    ax_g.plot(res["t_ms"], res["m"], label="m  (Na+ activation)",
+              color="tab:red",   linewidth=1.8)
+    ax_g.plot(res["t_ms"], res["h"], label="h  (Na+ inactivation)",
+              color="tab:purple", linewidth=1.8)
+    ax_g.plot(res["t_ms"], res["n"], label="n  (K+ activation)",
+              color="tab:green", linewidth=1.8)
+    ax_g.set_xlabel("t [ms]")
+    ax_g.set_ylabel("Gating variable [0, 1]")
+    ax_g.set_xlim(0, sim.duration_ms)
+    ax_g.set_ylim(-0.05, 1.05)
+    ax_g.set_title(
+        "Hodgkin-Huxley gating variables vs t\n"
+        "m^3·h gates I_Na;  n^4 gates I_K"
+    )
+    ax_g.axhline(0, color="gray", linewidth=0.4)
+    ax_g.axhline(1, color="gray", linewidth=0.4)
+    ax_g.legend(loc="center right", fontsize=9)
+    ax_g.grid(True, alpha=0.3)
+
+    # Middle-right: steady-state activation curves m_inf, h_inf, n_inf
+    ax_ss = plt.subplot2grid((3, 2), (1, 1), rowspan=2)
+    Vrange = np.linspace(-100.0, 50.0, 401)
+    am, bm = _hh_alpha_m(Vrange), _hh_beta_m(Vrange)
+    ah, bh = _hh_alpha_h(Vrange), _hh_beta_h(Vrange)
+    an, bn = _hh_alpha_n(Vrange), _hh_beta_n(Vrange)
+    m_inf = am / (am + bm)
+    h_inf = ah / (ah + bh)
+    n_inf = an / (an + bn)
+    ax_ss.plot(Vrange, m_inf, label="m_∞(V)", color="tab:red",   linewidth=2.0)
+    ax_ss.plot(Vrange, h_inf, label="h_∞(V)", color="tab:purple", linewidth=2.0)
+    ax_ss.plot(Vrange, n_inf, label="n_∞(V)", color="tab:green", linewidth=2.0)
+    ax_ss.axvline(V_REST, color="gray", linestyle=":", linewidth=0.8,
+                  label="V_rest")
+    ax_ss.axvline(V_THRESHOLD, color="tab:orange", linestyle="--",
+                  linewidth=0.8, label="V_threshold")
+    ax_ss.set_xlabel("V [mV]")
+    ax_ss.set_ylabel("Steady-state value")
+    ax_ss.set_title(
+        f"Steady-state activation x_∞(V)\n"
+        f"E_Na = {E_NA_DEFAULT:+.0f}, E_K = {E_K_DEFAULT:+.0f}, "
+        f"E_L = {E_L_DEFAULT:+.1f} mV"
+    )
+    ax_ss.legend(loc="center right", fontsize=9)
+    ax_ss.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Hodgkin-Huxley gating: m, h, n vs t and steady-state activation\n"
+        "(B3 ontology: m, h, n = saturation-gate occupancies of Na+/K+ "
+        "substrate channels)",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "71_hh_gating.png"))
+
+    return out
+
+
+def render_ribosome() -> list[str]:
+    """Produce 74_ribosome_codon.png and 75_translation_kinetics.png.
+
+    74: Two panels showing the codon-anticodon recognition geometry.
+        Left:  schematic of the 70S ribosome -- 30S small subunit (bottom)
+               and 50S large subunit (top) drawn as ellipses, with the
+               mRNA codon track threaded through the small subunit and
+               A/P/E tRNA-binding sites marked in the inter-subunit cleft.
+        Right: zoom-in on the A site showing the codon-anticodon helix
+               with three Watson-Crick base pairs (A-U / U-A / G-C for
+               the start codon AUG <-> anticodon UAC).  Donor-acceptor
+               H-bond distances annotated at 2.85 A.
+    75: Three panels of translation kinetics.
+        Left:   ribosome elongation rate distribution (log-normal) for
+                bacteria (mean 20 aa/s) and eukaryotes (mean 5 aa/s).
+        Centre: error rate as a function of number of kinetic gates
+                (single gate ~ 1e-2, two gates ~ 1e-4, etc.) -- shows
+                why kinetic proofreading is necessary for fidelity.
+        Right:  GTP budget for protein synthesis -- 2 GTP per peptide
+                bond, plotted across protein lengths from 50 to 1000 aa.
+    """
+    from src.stiff_medium.ribosome_substrate import (
+        CODON_PITCH_A,
+        ERROR_RATE_PER_CODON,
+        GTP_PER_ELONGATION_CYCLE,
+        INITIAL_SELECTION_ERR,
+        INTER_SITE_SPACING_A,
+        RATE_BACTERIA_AA_PER_S,
+        RATE_EUKARYOTE_AA_PER_S,
+        WC_BASE_PAIR_DISTANCE_A,
+        RibosomeGeometry,
+        RibosomeSimulator,
+    )
+    out: list[str] = []
+
+    # ---- 74: Ribosome schematic + codon-anticodon at A site -----------
+    geom = RibosomeGeometry(
+        organism_class="bacteria",
+        mrna_sequence="AUGGCUAAACGUUAAUAA",   # Met-Ala-Lys-Arg-stop-stop
+    )
+    sim = RibosomeSimulator(geometry=geom, organism_class="bacteria")
+
+    fig = plt.figure(figsize=(15, 7))
+
+    # --- Left: 70S ribosome with mRNA + A/P/E sites
+    ax1 = fig.add_subplot(1, 2, 1)
+    d_small, h_small = geom.small_subunit_dimensions_angstrom()
+    d_large, h_large = geom.large_subunit_dimensions_angstrom()
+    z_cleft = 0.5 * h_small + 5.0
+    e_small = plt.matplotlib.patches.Ellipse(
+        (0, 0), d_small, h_small,
+        facecolor="tab:cyan", edgecolor="black", alpha=0.45, linewidth=1.5,
+    )
+    ax1.add_patch(e_small)
+    ax1.text(0, -0.35 * h_small, "30S\n(small subunit)",
+             ha="center", va="center", fontsize=10, fontweight="bold")
+    e_large = plt.matplotlib.patches.Ellipse(
+        (0, z_cleft + 10.0 + 0.5 * h_large),
+        d_large, h_large,
+        facecolor="tab:orange", edgecolor="black", alpha=0.45, linewidth=1.5,
+    )
+    ax1.add_patch(e_large)
+    ax1.text(0, z_cleft + 10.0 + 0.85 * h_large, "50S\n(large subunit)",
+             ha="center", va="center", fontsize=10, fontweight="bold")
+    n_codons = geom.codon_count()
+    y_track = (np.arange(n_codons) - (n_codons - 1) / 2.0) * CODON_PITCH_A
+    z_mrna = 0.5 * h_small - 5.0
+    ax1.plot(y_track, np.full_like(y_track, z_mrna),
+             "k-", linewidth=2.5, alpha=0.85, label="mRNA (5'->3')")
+    for k, y in enumerate(y_track):
+        ax1.scatter(y, z_mrna, c="tab:purple", s=90, zorder=5,
+                    edgecolors="black", linewidths=0.6)
+        ax1.annotate(geom.codon_at(k), (y, z_mrna - 8),
+                     ha="center", fontsize=8, family="monospace")
+    site_colors = {"A": "tab:red", "P": "tab:green", "E": "tab:blue"}
+    site_dy = {"A": +INTER_SITE_SPACING_A, "P": 0.0, "E": -INTER_SITE_SPACING_A}
+    for site, color in site_colors.items():
+        y = site_dy[site]
+        ax1.scatter([y], [z_cleft + 5.0], c=color, s=320, marker="o",
+                    edgecolors="black", linewidths=1.5,
+                    label=f"{site} site", zorder=6)
+        ax1.text(y, z_cleft + 14.0, f"{site}", ha="center", va="bottom",
+                 fontsize=12, fontweight="bold", color=color)
+    ax1.annotate("", xy=(y_track.max() + 12, z_mrna),
+                 xytext=(y_track.max() + 2, z_mrna),
+                 arrowprops=dict(arrowstyle="->", color="black", lw=2))
+    ax1.text(y_track.max() + 14, z_mrna - 4, "5'->3'",
+             fontsize=9, family="monospace")
+    ax1.set_xlim(-0.6 * d_large, +0.6 * d_large)
+    ax1.set_ylim(-0.6 * h_small, z_cleft + 10.0 + 1.05 * h_large)
+    ax1.set_xlabel("y [A] (mRNA reading axis)", fontsize=10)
+    ax1.set_ylabel("z [A] (subunit-stack axis)", fontsize=10)
+    ax1.set_aspect("equal")
+    ax1.set_title(
+        "70S ribosome: 30S + 50S subunits, mRNA codon track, A/P/E sites\n"
+        f"codon pitch = {CODON_PITCH_A:.1f} A; site spacing = {INTER_SITE_SPACING_A:.0f} A",
+        fontsize=11,
+    )
+    ax1.legend(loc="upper right", fontsize=8)
+    ax1.grid(True, alpha=0.2)
+
+    # --- Right: codon-anticodon Watson-Crick helix at A site
+    ax2 = fig.add_subplot(1, 2, 2)
+    a_codon = geom.a_site_codon()
+    a_anti  = geom.a_site_anticodon()
+    bp_dx = 4.0
+    xs = np.array([0.0, bp_dx, 2.0 * bp_dx])
+    y_codon = 0.0
+    y_anti  = WC_BASE_PAIR_DISTANCE_A
+    base_color = {"A": "tab:red", "U": "tab:blue",
+                  "G": "tab:green", "C": "tab:orange"}
+    for i, (cb, ab) in enumerate(zip(a_codon, a_anti)):
+        ax2.scatter(xs[i], y_codon, c=base_color[cb], s=900,
+                    edgecolors="black", linewidths=1.5, zorder=5)
+        ax2.text(xs[i], y_codon - 0.7, cb, ha="center", va="center",
+                 fontsize=14, fontweight="bold")
+        ax2.scatter(xs[i], y_anti, c=base_color[ab], s=900,
+                    edgecolors="black", linewidths=1.5, zorder=5)
+        ax2.text(xs[i], y_anti + 0.7, ab, ha="center", va="center",
+                 fontsize=14, fontweight="bold")
+        n_hbonds = 3 if (cb, ab) in {("G", "C"), ("C", "G")} else 2
+        for j in range(n_hbonds):
+            offset = (j - (n_hbonds - 1) / 2.0) * 0.18
+            ax2.plot([xs[i] + offset, xs[i] + offset],
+                     [y_codon + 0.35, y_anti - 0.35],
+                     "k--", linewidth=1.2, alpha=0.85)
+    ax2.annotate(
+        f"{WC_BASE_PAIR_DISTANCE_A:.2f} A",
+        xy=(xs[-1] + 0.6, 0.5 * (y_codon + y_anti)),
+        fontsize=10, color="black", fontweight="bold",
+    )
+    ax2.annotate("", xy=(xs[-1] + 0.55, y_anti - 0.45),
+                 xytext=(xs[-1] + 0.55, y_codon + 0.45),
+                 arrowprops=dict(arrowstyle="<->", color="black", lw=1.0))
+    ax2.annotate("mRNA codon (5'->3')", xy=(xs[-1] + 0.5, y_codon),
+                 xytext=(xs[-1] + 1.2, y_codon - 1.5),
+                 arrowprops=dict(arrowstyle="-", color="gray", lw=0.8),
+                 fontsize=9, family="monospace")
+    ax2.annotate("tRNA anticodon (3'->5')", xy=(xs[-1] + 0.5, y_anti),
+                 xytext=(xs[-1] + 1.2, y_anti + 1.5),
+                 arrowprops=dict(arrowstyle="-", color="gray", lw=0.8),
+                 fontsize=9, family="monospace")
+    ax2.annotate("", xy=(xs[-1] + 1.0, y_codon),
+                 xytext=(xs[0] - 1.0, y_codon),
+                 arrowprops=dict(arrowstyle="->", color="tab:purple", lw=2))
+    ax2.annotate("", xy=(xs[0] - 1.0, y_anti),
+                 xytext=(xs[-1] + 1.0, y_anti),
+                 arrowprops=dict(arrowstyle="->", color="tab:olive", lw=2))
+    ax2.set_xlim(-2.5, xs[-1] + 4.5)
+    ax2.set_ylim(-2.5, y_anti + 2.5)
+    ax2.set_aspect("equal")
+    ax2.set_title(
+        f"A-site codon-anticodon Watson-Crick pairing\n"
+        f"codon = {a_codon}  <-->  anticodon = {a_anti}   "
+        f"(WC pairs = {sim.watson_crick_pairs(a_codon, a_anti)} of 3)",
+        fontsize=11,
+    )
+    ax2.set_xlabel("position along helix axis [A]", fontsize=10)
+    ax2.set_ylabel("strand displacement [A]", fontsize=10)
+    ax2.grid(True, alpha=0.2)
+
+    fig.suptitle(
+        "Ribosome translation from substrate: codon-anticodon recognition",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "74_ribosome_codon.png"))
+
+    # ---- 75: Translation kinetics + proofreading + GTP budget ----------
+    sim_b = RibosomeSimulator(organism_class="bacteria")
+    sim_e = RibosomeSimulator(organism_class="eukaryote")
+
+    fig, (axL, axM, axR) = plt.subplots(1, 3, figsize=(15, 5))
+
+    # --- Left: elongation rate distribution (log-normal)
+    samples_b = sim_b.elongation_rate_distribution(n_samples=20000, seed=1)
+    samples_e = sim_e.elongation_rate_distribution(n_samples=20000, seed=2)
+    bins = np.linspace(0, 60, 80)
+    axL.hist(samples_b, bins=bins, density=True, color="tab:blue", alpha=0.55,
+             edgecolor="black", linewidth=0.4,
+             label=f"bacteria (mean {RATE_BACTERIA_AA_PER_S:.0f} aa/s)")
+    axL.hist(samples_e, bins=bins, density=True, color="tab:orange", alpha=0.55,
+             edgecolor="black", linewidth=0.4,
+             label=f"eukaryote (mean {RATE_EUKARYOTE_AA_PER_S:.0f} aa/s)")
+    axL.axvline(RATE_BACTERIA_AA_PER_S, color="tab:blue", lw=2.0, ls="--",
+                label=f"bacterial sample mean = {samples_b.mean():.1f} aa/s")
+    axL.axvline(RATE_EUKARYOTE_AA_PER_S, color="tab:orange", lw=2.0, ls="--",
+                label=f"eukaryotic sample mean = {samples_e.mean():.1f} aa/s")
+    axL.set_xlabel("elongation rate [amino acids / s]", fontsize=10)
+    axL.set_ylabel("probability density", fontsize=10)
+    axL.set_title(
+        f"Translation rate distribution\n"
+        f"speedup ratio bact/euk = {samples_b.mean()/samples_e.mean():.2f}",
+        fontsize=11,
+    )
+    axL.legend(fontsize=8)
+    axL.grid(True, alpha=0.3)
+
+    # --- Centre: kinetic proofreading -- error vs number of gates
+    n_gates = np.array([0, 1, 2, 3, 4, 5])
+    err_per_gate = INITIAL_SELECTION_ERR
+    err = np.where(n_gates == 0, 1.0, err_per_gate ** np.maximum(n_gates, 1))
+    axM.semilogy(n_gates, err, "o-", color="tab:red", markersize=10,
+                 linewidth=2.0, label="error = (1e-2)^N_gates")
+    axM.axhline(ERROR_RATE_PER_CODON, color="tab:green", ls="--", lw=1.5,
+                label=f"biological setpoint = {ERROR_RATE_PER_CODON:.0e}")
+    axM.scatter([2], [ERROR_RATE_PER_CODON], c="tab:green", s=300,
+                marker="*", edgecolors="black", linewidths=1.5, zorder=10,
+                label="ribosome (2 gates: EF-Tu, post-GTP)")
+    axM.set_xlabel("number of kinetic discrimination gates", fontsize=10)
+    axM.set_ylabel("per-codon error rate", fontsize=10)
+    axM.set_title(
+        "Kinetic proofreading\n"
+        "single gate ~ 1e-2; two gates -> ~ 1e-4 (Hopfield 1974)",
+        fontsize=11,
+    )
+    axM.set_xticks(n_gates)
+    axM.set_ylim(1e-12, 2.0)
+    axM.legend(fontsize=8, loc="upper right")
+    axM.grid(True, which="both", alpha=0.3)
+
+    # --- Right: GTP budget vs protein length
+    lengths = np.arange(50, 1050, 25)
+    gtp_per_protein = GTP_PER_ELONGATION_CYCLE * lengths
+    axR.plot(lengths, gtp_per_protein, "-", color="tab:purple", linewidth=2.0,
+             label=f"{GTP_PER_ELONGATION_CYCLE} GTP/cycle (EF-Tu + EF-G)")
+    typical_len = 300
+    axR.scatter([typical_len], [GTP_PER_ELONGATION_CYCLE * typical_len],
+                c="tab:red", s=180, marker="o", edgecolors="black",
+                linewidths=1.5, zorder=5,
+                label=f"300-aa protein -> {GTP_PER_ELONGATION_CYCLE * typical_len} GTP")
+    axR2 = axR.twinx()
+    times_b = lengths / RATE_BACTERIA_AA_PER_S
+    times_e = lengths / RATE_EUKARYOTE_AA_PER_S
+    axR2.plot(lengths, times_b, "-", color="tab:blue", linewidth=1.5, alpha=0.7,
+              label=f"bacteria translation time ({RATE_BACTERIA_AA_PER_S:.0f} aa/s)")
+    axR2.plot(lengths, times_e, "-", color="tab:orange", linewidth=1.5, alpha=0.7,
+              label=f"eukaryote translation time ({RATE_EUKARYOTE_AA_PER_S:.0f} aa/s)")
+    axR2.set_ylabel("translation time [s]", fontsize=10, color="tab:gray")
+    axR2.tick_params(axis="y", labelcolor="tab:gray")
+    axR.set_xlabel("protein length [amino acids]", fontsize=10)
+    axR.set_ylabel("GTP molecules consumed", fontsize=10, color="tab:purple")
+    axR.tick_params(axis="y", labelcolor="tab:purple")
+    e_kT = sim_b.energy_per_peptide_bond_kT()
+    axR.set_title(
+        "GTP budget per protein\n"
+        f"{e_kT:.1f} kT / peptide bond (2 GTP * 7.3 kcal/mol)",
+        fontsize=11,
+    )
+    h1, l1 = axR.get_legend_handles_labels()
+    h2, l2 = axR2.get_legend_handles_labels()
+    axR.legend(h1 + h2, l1 + l2, fontsize=8, loc="upper left")
+    axR.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Translation kinetics from substrate: rate, fidelity, energy budget",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "75_translation_kinetics.png"))
+
+    return out
+
+
 def main() -> None:
     print(f"Rendering all visualizations to {VISUALS_DIR}/")
     print("=" * 70)
@@ -3668,12 +4809,22 @@ def main() -> None:
          render_solvation),
         ("Protein folding (alpha-helix + beta-sheet + funnel + Ramachandran)",
          render_protein),
+        ("DNA mechanics (B-DNA double helix + force-extension + B→S transition)",
+         render_dna),
+        ("Biological membranes (lipid bilayer 4 nm + κ=20 kT + lateral diffusion + Helfrich)",
+         render_membrane),
         ("Catalysis (Sabatier volcano Ni/Pd/Pt/Au + carbonic anhydrase + Hb Hill)",
          render_catalysis),
         ("Substrate-DFT (KS orbitals + LDA exchange + substrate σ≤½ correlation)",
          render_dft),
         ("Crystal structures (NaCl, diamond, graphite, CsCl, ZnS, perovskite + XRD)",
          render_crystals),
+        ("Photosynthesis (chlorophyll absorption + Z-scheme PS-II -> PS-I -> NADPH)",
+         render_photosynthesis),
+        ("Neural action potential (Hodgkin-Huxley AP + m/h/n gating + refractory)",
+         render_neural),
+        ("Ribosome translation (30S+50S + mRNA + A/P/E + WC pairing + 2 GTP/cycle)",
+         render_ribosome),
         ("Substrate visualizer", render_substrate_visualizer),
     ]
     all_paths = []
