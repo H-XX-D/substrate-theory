@@ -1109,6 +1109,179 @@ def render_bound_state_3d() -> list[str]:
 # 18. Lagrangian-term contributions (each term turned on separately)
 # ---------------------------------------------------------------------------
 
+def render_phase_transition() -> list[str]:
+    """Produce 40_phase_transition.png and 41_bubble_nucleation.png.
+
+    40: 2-D snapshots of the substrate de-saturation transition —
+        bubbles of σ = -1 (de-saturated) nucleating inside the σ = +1
+        (saturated, pre-Big-Bang) sea, expanding, colliding, and
+        finally percolating.
+    41: bubble size distribution + nucleation rate Γ(T) curve.
+    """
+    from src.stiff_medium.phase_transition_paired import (
+        PhaseTransitionGeometry,
+        PhaseTransitionSimulator,
+        T_CRITICAL_ONSAGER,
+        nucleation_rate_vs_T,
+    )
+    out: list[str] = []
+
+    # ----- 40: snapshots of bubble formation + percolation ----------------
+    geom = PhaseTransitionGeometry(L=64, seed=2)
+    sim = PhaseTransitionSimulator(
+        geometry=geom,
+        T=2.20,                # just below T_c — metastable saturated phase
+        n_sweeps=180,
+        snapshot_every=30,
+        seed_grid="saturated",
+        seed=2,
+    )
+    sim.run()
+
+    snaps = sim.history["snapshots"]
+    sweeps = sim.history["snapshot_sweeps"]
+
+    # Always show 6 panels (pad with last snapshot if fewer were taken).
+    target_panels = 6
+    while len(snaps) < target_panels:
+        snaps.append(snaps[-1])
+        sweeps.append(sweeps[-1])
+    snaps = snaps[:target_panels]
+    sweeps = sweeps[:target_panels]
+
+    fig, axes = plt.subplots(2, 3, figsize=(13, 8))
+    for ax, snap, t in zip(axes.flat, snaps, sweeps):
+        ax.imshow(snap, cmap="RdBu", vmin=-1, vmax=1, interpolation="nearest")
+        sigma_mean = float(snap.mean())
+        # Highlight percolation status in the title.
+        perc = geom.has_percolating_cluster(grid=snap, target=-1)
+        tag = "PERCOLATING" if perc else "isolated bubbles"
+        ax.set_title(f"sweep {t}   ⟨σ⟩={sigma_mean:+.2f}   {tag}",
+                     fontsize=10)
+        ax.set_xticks([])
+        ax.set_yticks([])
+    fig.suptitle(
+        f"Substrate de-saturation: σ=+1 (red) → σ=-1 (blue) bubbles  "
+        f"|  T = {sim.T:.2f}, T_c = {T_CRITICAL_ONSAGER:.3f}",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "40_phase_transition.png"))
+
+    # ----- 41: bubble-size distribution + nucleation rate vs T ------------
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+
+    # Left panel — bubble size distribution at the final snapshot.
+    sizes = sim.bubble_size_distribution()
+    ax = axes[0]
+    if sizes.size > 0:
+        # Log-binned histogram from 1 to max(sizes)+1
+        max_s = int(sizes.max())
+        bins = np.geomspace(1, max(max_s, 2) + 1, num=12)
+        ax.hist(sizes, bins=bins, color="steelblue", edgecolor="black",
+                alpha=0.8)
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel("bubble size  s  [sites]")
+        ax.set_ylabel("count  N(s)")
+        ax.set_title(
+            f"Bubble size distribution (final snapshot, T = {sim.T:.2f})\n"
+            f"largest bubble = {int(sizes.max())} sites"
+        )
+        ax.grid(True, which="both", alpha=0.3)
+    else:
+        ax.text(0.5, 0.5, "no bubbles formed",
+                ha="center", transform=ax.transAxes)
+
+    # Right panel — nucleation rate Γ(T)
+    Ts = np.linspace(1.0, 3.5, 14)
+    scan = nucleation_rate_vs_T(Ts, L=24, n_sweeps=60, seed=42)
+    ax = axes[1]
+    ax.plot(scan["T"], scan["rate"], "o-", color="crimson", linewidth=2,
+            markersize=6, label="Γ(T) bubbles / area / sweep")
+    ax.axvline(T_CRITICAL_ONSAGER, color="black", linestyle="--",
+               label=f"T_c (Onsager) = {T_CRITICAL_ONSAGER:.3f}")
+    ax.set_xlabel("Temperature  T  [units of J]")
+    ax.set_ylabel("nucleation rate  Γ(T)")
+    ax.set_title("Bubble nucleation rate vs temperature\n"
+                 "(saturated initial state — substrate de-saturation)")
+    ax.legend(loc="upper left", fontsize=9)
+    ax.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Cosmological substrate phase transition — bubble statistics",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "41_bubble_nucleation.png"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 19. Black-hole horizon + Hawking + ringdown (paired geometry/sim/viz)
+# ---------------------------------------------------------------------------
+
+def render_black_hole() -> list[str]:
+    """Produce 34_black_hole_horizon.png and 35_hawking_ringdown.png.
+
+    34: Substrate σ(r) profile + inward photon trajectories near r_s
+        for a solar-mass Schwarzschild BH.
+    35: Hawking blackbody spectrum at T_H + (2,2,0) Schwarzschild
+        ringdown waveform for a stellar-mass remnant (~250 Hz).
+
+    Both panels are produced by the paired pipeline in
+    src/stiff_medium/black_hole_paired.py — geometry + simulator + viz
+    around the universal substrate saturation cap σ = 1/2 (B3 §18.39).
+    """
+    from src.stiff_medium.black_hole_paired import (
+        BlackHoleVisualizer,
+        default_solar_bh,
+        default_stellar_remnant,
+    )
+    out: list[str] = []
+
+    # Panel 34 — solar-mass BH (r_s ~ 3 km, µs photon dynamics)
+    sim_sun = default_solar_bh()
+    viz_sun = BlackHoleVisualizer(sim_sun)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+    viz_sun.horizon_panel(ax1, ax2)
+    fig.suptitle(
+        r"Black-hole horizon as substrate $\sigma=1/2$ saturation surface "
+        r"(M = 1 M$_\odot$, $r_s \approx$ 2.95 km)",
+        fontsize=12, y=1.02,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "34_black_hole_horizon.png"))
+
+    # Panel 35 — Hawking spectrum (solar mass) + stellar-remnant ringdown
+    sim_remnant = default_stellar_remnant()
+    fig, (ax_spec, ax_wave) = plt.subplots(1, 2, figsize=(13, 5))
+    # Spectrum from solar-mass BH (T_H ~ 6e-8 K → microwave-ish Wien peak)
+    dummy_fig1 = plt.figure()
+    viz_sun.hawking_ringdown_panel(ax_spec=ax_spec,
+                                   ax_wave=dummy_fig1.add_subplot(111))
+    plt.close(dummy_fig1)
+    # Ringdown from 48 M_sun Schwarzschild (~250 Hz) — astrophysically realistic
+    dummy_fig2 = plt.figure()
+    BlackHoleVisualizer(sim_remnant).hawking_ringdown_panel(
+        ax_spec=dummy_fig2.add_subplot(111),
+        ax_wave=ax_wave,
+    )
+    plt.close(dummy_fig2)
+    fig.suptitle(
+        r"Hawking radiation $T_H = \hbar c^3 / (8\pi G M k_B)$  +  "
+        r"Schwarzschild (2,2,0) ringdown",
+        fontsize=12, y=1.02,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "35_hawking_ringdown.png"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 20. Lagrangian-term contributions (each term turned on separately)
+# ---------------------------------------------------------------------------
+
 def render_lagrangian_terms() -> list[str]:
     """Produce 32_lagrangian_terms.png and 33_term_contributions.png.
 
@@ -1133,6 +1306,636 @@ def render_lagrangian_terms() -> list[str]:
 
     fig = draw_term_contributions(geometry=geom)
     out.append(save(fig, "33_term_contributions.png"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 19. Gravitational-wave signal (BBH inspiral + merger + ringdown)
+# ---------------------------------------------------------------------------
+
+def render_gw_signal() -> list[str]:
+    """Produce 46_gw_inspiral.png and 47_gw_merger_ringdown.png.
+
+    46: strain h(t) for a GW150914-like BBH (M_c ≈ 28 M_sun) showing the
+        chirp + merger + ringdown, plus the f(t) overlay tracing the
+        Newtonian-PN τ^{-3/8} chirp law.
+    47: spectrogram |H(f, t)|^2 of the same waveform with f_ISCO and the
+        substrate-derived ringdown frequency f_RD overlaid; second panel
+        shows the ringdown waveform with its damping envelope.
+
+    Substrate identity: v_GW = √(K/ρ) = c (zero-parameter, structural).
+    Ringdown frequency = QNM resonance of the σ → 1/2 cone-tilt surface.
+    """
+    from src.stiff_medium.gw_signal_paired import (
+        gw150914_preset,
+        render_inspiral_figure,
+        render_ringdown_figure,
+    )
+    out: list[str] = []
+    geom, sim = gw150914_preset()
+
+    fig = render_inspiral_figure(geom=geom, sim=sim)
+    out.append(save(fig, "46_gw_inspiral.png"))
+
+    fig = render_ringdown_figure(geom=geom, sim=sim)
+    out.append(save(fig, "47_gw_merger_ringdown.png"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Hubble tension paired (substrate H_0 = 71.92 vs SH0ES vs Planck)
+# ---------------------------------------------------------------------------
+
+
+def render_hubble() -> list[str]:
+    """Produce 38_hubble_tension.png and 39_distance_ladder.png.
+
+    38: horizontal-bar plot of the seven leading H_0 probes with the
+        substrate prediction H_0 = 71.92 km/s/Mpc shown as a vertical
+        band; bars colour-coded by early (CMB) vs late (distance ladder).
+    39: distance-modulus Hubble diagram with three theory curves
+        (substrate, SH0ES, Planck) on top of a synthetic SN Ia sample
+        drawn from the substrate cosmology, plus the H_0 best-fit value;
+        residual panel highlights where rivals diverge from substrate.
+    """
+    from src.stiff_medium.hubble_paired import (
+        H0_MEASUREMENTS,
+        PLANCK_H0,
+        SH0ES_H0,
+        SUBSTRATE_H0,
+        SUBSTRATE_H0_SIGMA,
+        make_default_pair,
+    )
+
+    out: list[str] = []
+    geom, sim = make_default_pair()
+
+    # ---------------------------------------------- 38: tension landscape
+    fig, ax = plt.subplots(figsize=(11, 6.5))
+
+    items = sorted(H0_MEASUREMENTS.items(), key=lambda kv: kv[1][0])
+    names = [k for k, _ in items]
+    vals = [v[0] for _, v in items]
+    sigs = [v[1] for _, v in items]
+    sides = [v[2] for _, v in items]
+
+    y = np.arange(len(items))
+    side_colour = {"late": "#d0411e", "early": "#1d5fb6"}
+    colours = [side_colour[s] for s in sides]
+
+    for yi, vi, si, ci in zip(y, vals, sigs, colours):
+        ax.errorbar([vi], [yi], xerr=[si], fmt="o", ecolor=ci, mfc="white",
+                    mec=ci, ms=10, mew=1.6, capsize=5, elinewidth=2.0,
+                    zorder=3)
+        ax.scatter([vi], [yi], color=ci, s=80, zorder=4,
+                   edgecolors="black", linewidths=0.6)
+
+    ax.axvspan(SUBSTRATE_H0 - SUBSTRATE_H0_SIGMA,
+               SUBSTRATE_H0 + SUBSTRATE_H0_SIGMA,
+               color="#2ca02c", alpha=0.22,
+               label=f"Substrate H_0 = {SUBSTRATE_H0:.2f} +/- {SUBSTRATE_H0_SIGMA:.2f}")
+    ax.axvline(SUBSTRATE_H0, color="#2ca02c", linewidth=2.5, zorder=5)
+
+    ax.axvline(SH0ES_H0, color="#d0411e", linestyle="--", alpha=0.65,
+               linewidth=1.4, label=f"SH0ES = {SH0ES_H0:.2f}")
+    ax.axvline(PLANCK_H0, color="#1d5fb6", linestyle="--", alpha=0.65,
+               linewidth=1.4, label=f"Planck = {PLANCK_H0:.2f}")
+
+    for yi, vi in zip(y, vals):
+        delta = vi - SUBSTRATE_H0
+        ax.text(78.7, yi, f"d={delta:+.2f}", va="center", fontsize=9,
+                color="#444444")
+
+    late_proxy = plt.Line2D([0], [0], marker="o", color="white",
+                            mec="#d0411e", mfc="#d0411e", ms=9,
+                            label="late (distance ladder)")
+    early_proxy = plt.Line2D([0], [0], marker="o", color="white",
+                             mec="#1d5fb6", mfc="#1d5fb6", ms=9,
+                             label="early (CMB / inverse ladder)")
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(names)
+    ax.set_xlabel("H_0  [km / s / Mpc]")
+    ax.set_xlim(63.0, 81.0)
+    ax.set_title("Hubble tension: substrate H_0 = 71.92 vs leading probes\n"
+                 "red = late-universe distance ladder | blue = early-universe CMB")
+    handles, labels = ax.get_legend_handles_labels()
+    handles += [late_proxy, early_proxy]
+    labels += ["late (distance ladder)", "early (CMB / inverse ladder)"]
+    ax.legend(handles, labels, loc="lower right", fontsize=9, framealpha=0.95)
+    ax.grid(True, axis="x", alpha=0.3)
+    fig.tight_layout()
+    out.append(save(fig, "38_hubble_tension.png"))
+
+    # ---------------------------------------------- 39: distance ladder
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6),
+                             gridspec_kw={"width_ratios": [3, 2]})
+
+    z_data, mu_data, sigma_mu = sim.synthesize_sn_sample(
+        n=80, z_max=1.5, H0_true=SUBSTRATE_H0, scatter_mag=0.12)
+
+    z_curve = np.linspace(0.01, 1.6, 80)
+    mu_sub = sim.distance_modulus_array(z_curve, SUBSTRATE_H0)
+    mu_shoes = sim.distance_modulus_array(z_curve, SH0ES_H0)
+    mu_planck = sim.distance_modulus_array(z_curve, PLANCK_H0)
+
+    fit = sim.fit_H0(z_data, mu_data, sigma_mu)
+
+    ax = axes[0]
+    ax.errorbar(z_data, mu_data, yerr=sigma_mu, fmt=".", color="#888888",
+                ecolor="#bbbbbb", ms=7, alpha=0.85,
+                label="synthetic SN Ia (substrate)")
+    ax.plot(z_curve, mu_sub, color="#2ca02c", linewidth=2.4,
+            label=f"Substrate H_0={SUBSTRATE_H0:.2f}")
+    ax.plot(z_curve, mu_shoes, color="#d0411e", linewidth=1.8, linestyle="--",
+            label=f"SH0ES H_0={SH0ES_H0:.2f}")
+    ax.plot(z_curve, mu_planck, color="#1d5fb6", linewidth=1.8, linestyle="--",
+            label=f"Planck H_0={PLANCK_H0:.2f}")
+    ax.set_xscale("log")
+    ax.set_xlabel("redshift  z")
+    ax.set_ylabel("distance modulus  mu")
+    ax.set_title("Hubble diagram: mu vs z\n"
+                 f"best-fit H_0 on synthetic data = "
+                 f"{fit['H0_best']:.2f} +/- {fit['sigma_H0']:.2f}")
+    ax.legend(loc="lower right", fontsize=9, framealpha=0.92)
+    ax.grid(True, alpha=0.3, which="both")
+
+    ax2 = axes[1]
+    mu_sub_at_data = sim.distance_modulus_array(z_data, SUBSTRATE_H0)
+    res_data = mu_data - mu_sub_at_data
+    res_shoes_curve = (sim.distance_modulus_array(z_curve, SH0ES_H0)
+                       - sim.distance_modulus_array(z_curve, SUBSTRATE_H0))
+    res_planck_curve = (sim.distance_modulus_array(z_curve, PLANCK_H0)
+                        - sim.distance_modulus_array(z_curve, SUBSTRATE_H0))
+
+    ax2.errorbar(z_data, res_data, yerr=sigma_mu, fmt=".", color="#888888",
+                 ecolor="#bbbbbb", ms=6, alpha=0.7, label="data - substrate")
+    ax2.plot(z_curve, res_shoes_curve, color="#d0411e", linewidth=1.8,
+             linestyle="--",
+             label=f"SH0ES - substrate (d={SH0ES_H0 - SUBSTRATE_H0:+.2f})")
+    ax2.plot(z_curve, res_planck_curve, color="#1d5fb6", linewidth=1.8,
+             linestyle="--",
+             label=f"Planck - substrate (d={PLANCK_H0 - SUBSTRATE_H0:+.2f})")
+    ax2.axhline(0.0, color="#2ca02c", linewidth=2.0, label="substrate")
+    ax2.set_xscale("log")
+    ax2.set_xlabel("redshift  z")
+    ax2.set_ylabel("d_mu  (theory - substrate)")
+    ax2.set_title("Residuals: rival H_0 vs substrate")
+    ax2.legend(loc="best", fontsize=8, framealpha=0.92)
+    ax2.grid(True, alpha=0.3, which="both")
+
+    fig.tight_layout()
+    out.append(save(fig, "39_distance_ladder.png"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 24. 3D substrate field full-evolution movie (32³ lattice, iso-surfaces)
+# ---------------------------------------------------------------------------
+
+def render_substrate_3d_movie() -> list[str]:
+    """Produce 44_substrate_3d_evolution.png and 45_3d_iso_snapshots.png.
+
+    44: 4 time snapshots of the |u| iso-surface across one breathing
+        period — the bound state visibly breathes in 3D.
+    45: 6-panel grid of iso-surfaces extracted at different threshold
+        levels (5% → 60% of |u|_max), showing how the strain envelope
+        nests from a thin shell to the inner core.
+    """
+    from src.stiff_medium.substrate_3d_movie import (
+        Substrate3DGeometry,
+        Substrate3DSimulator,
+    )
+    out: list[str] = []
+
+    geom = Substrate3DGeometry(N=32, L=12.0)
+    sim = Substrate3DSimulator(
+        geometry=geom, n_frames=4, n_periods=1.0,
+    )
+    sim.run()
+    diag = sim.diagnostics()
+    T = diag["T_period"]
+    abs_max = diag["abs_max"]
+
+    # ---- 44: 4 time snapshots of the |u| iso-surface ----
+    fig = plt.figure(figsize=(20, 6))
+    snap_titles = [
+        "t = 0",
+        f"t = T/3 = {T/3.0:.3f}",
+        f"t = 2T/3 = {2.0*T/3.0:.3f}",
+        f"t = T = {T:.3f}",
+    ]
+    iso_level_frac = 0.35
+    iso_level = iso_level_frac * abs_max
+
+    for col in range(4):
+        ax = fig.add_subplot(1, 4, col + 1, projection="3d")
+        xs, ys, zs, vals = sim.iso_points(
+            frame_index=col, level_frac=iso_level_frac, max_points=4000,
+        )
+        if len(xs) > 0:
+            ax.scatter(
+                xs, ys, zs, c=vals, cmap="plasma",
+                s=12, alpha=0.55,
+                vmin=0.0, vmax=abs_max,
+            )
+        ax.set_xlim(-geom.L, geom.L)
+        ax.set_ylim(-geom.L, geom.L)
+        ax.set_zlim(-geom.L, geom.L)
+        ax.set_xlabel("x [ξ]")
+        ax.set_ylabel("y [ξ]")
+        ax.set_zlabel("z [ξ]")
+        ax.set_title(snap_titles[col], fontsize=11)
+
+    fig.suptitle(
+        f"3D substrate field u(x,y,z,t) — full breathing-period evolution\n"
+        f"32³ lattice, |u| iso-level = {iso_level:.4f} "
+        f"(35% of |u|_max = {abs_max:.4f}),  T = 2π/ω_b = {T:.3f}\n"
+        f"Energy drift over the period: {diag['energy_drift_pct']:.3f}%   "
+        f"  iso-volume oscillation: "
+        f"{100.0*diag['iso_vol_amp_frac']:.2f}% of mean",
+        fontsize=11,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "44_substrate_3d_evolution.png"))
+
+    # ---- 45: 6-panel grid of iso-surfaces at varying thresholds ----
+    fig = plt.figure(figsize=(18, 11))
+    # Use the t = T/3 frame so all thresholds capture a clean
+    # breathing-state snapshot.
+    mid_frame = 1
+    levels = [0.05, 0.15, 0.25, 0.35, 0.50, 0.60]
+
+    for idx, lev in enumerate(levels):
+        ax = fig.add_subplot(2, 3, idx + 1, projection="3d")
+        xs, ys, zs, vals = sim.iso_points(
+            frame_index=mid_frame,
+            level_frac=lev,
+            max_points=3500,
+            rng_seed=idx,
+        )
+        n_pts = len(xs)
+        if n_pts > 0:
+            ax.scatter(
+                xs, ys, zs, c=vals, cmap="plasma",
+                s=10, alpha=0.55,
+                vmin=0.0, vmax=abs_max,
+            )
+        ax.set_xlim(-geom.L, geom.L)
+        ax.set_ylim(-geom.L, geom.L)
+        ax.set_zlim(-geom.L, geom.L)
+        ax.set_xlabel("x [ξ]"); ax.set_ylabel("y [ξ]"); ax.set_zlabel("z [ξ]")
+        ax.set_title(
+            f"|u| iso-level = {lev*100:.0f}% of |u|_max\n"
+            f"({lev*abs_max:.4f}, {n_pts} cells)",
+            fontsize=10,
+        )
+
+    fig.suptitle(
+        "3D iso-surfaces of |u(x,y,z)| at varying thresholds  "
+        "(frame t ≈ T/3)\n"
+        "Strain envelope nests: low threshold = outer shell, "
+        "high threshold = inner core\n"
+        f"32³ lattice, ω_b = {diag['omega_pred']:.4f}, "
+        f"E_rest = ℏ ω_b = {diag['rest_E_pred']:.3e} J",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "45_3d_iso_snapshots.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 25. CMB power spectrum + polarization (paired GEOMETRY+SIM+VIZ)
+# ---------------------------------------------------------------------------
+
+def render_cmb() -> list[str]:
+    """Produce 36_cmb_power_spectrum.png and 37_cmb_polarization.png.
+
+    36: D_l vs l for TT and EE (boosted x50 for visibility) on a single
+        axis, with the first 5 acoustic peaks marked.
+    37: 2D polarization (Q,U) pattern on the (theta,phi) sphere unrolled
+        to a flat projection, plus a B-mode null plot showing substrate
+        r=0 (lensing only) vs an illustrative inflation r=0.05 curve.
+
+    Substrate identity:
+        * T_CMB = 2.7255 K  (calibrated horizon temperature)
+        * first acoustic peak l ~ 220 (recombination physics unchanged)
+        * primordial r = 0  (no inflation; only lensing B-modes survive)
+    """
+    from src.stiff_medium.cmb_paired import (
+        CMBGeometry,
+        CMBSimulator,
+        LENSING_B_PEAK_AMPLITUDE_UK2,
+    )
+    out: list[str] = []
+
+    geom = CMBGeometry(n_theta=120, n_phi=240, l_max=20, seed=7)
+    sim = CMBSimulator(geometry=geom)
+
+    # ---- 36: D_l vs l for TT and EE -----------------------------------
+    ells = np.arange(2, 2500)
+    d_tt = sim.tt_spectrum(ells)
+    d_ee = sim.ee_spectrum(ells)
+    detected_peaks = sim.detect_peaks(5)
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    ax.plot(ells, d_tt, "b-", linewidth=2, label="TT (substrate)")
+    ax.plot(ells, d_ee * 50.0, "r-", linewidth=1.5, alpha=0.85,
+            label="EE x 50 (substrate)")
+    for i, lp in enumerate(detected_peaks, start=1):
+        ax.axvline(lp, color="green", linestyle=":", alpha=0.6,
+                   linewidth=1.2)
+        ax.text(lp, d_tt.max() * (0.95 - 0.07 * i), f"l={int(lp)}",
+                color="darkgreen", fontsize=9, ha="center", rotation=90)
+    ax.set_xscale("log")
+    ax.set_xlim(2, 2500)
+    ax.set_ylim(0, max(d_tt.max(), 1.0) * 1.1)
+    ax.set_xlabel("multipole l")
+    ax.set_ylabel(r"$D_\ell = \ell(\ell+1)\,C_\ell\,/\,2\pi$  [$\mu$K$^2$]")
+    ax.set_title(
+        f"CMB angular power spectrum (substrate framework)\n"
+        f"first peak l~{detected_peaks[0]:.0f}  "
+        f"T_CMB={sim.temperature():.4f} K  "
+        f"r_tensor={sim.tensor_to_scalar_ratio():.2f}"
+    )
+    ax.grid(True, alpha=0.3, which="both")
+    ax.legend(loc="upper right")
+    out.append(save(fig, "36_cmb_power_spectrum.png"))
+
+    # ---- 37: polarization pattern + B-mode null -----------------------
+    Q, U = geom.polarization_QU()
+    delta_uK = geom.temperature_field_uK()
+    sub = 8
+    th = geom.theta[::sub]
+    ph = geom.phi[::sub]
+    PH, TH = np.meshgrid(ph, th)
+    Qs = Q[::sub, ::sub]
+    Us = U[::sub, ::sub]
+    psi = 0.5 * np.arctan2(Us, Qs)
+    amp = np.sqrt(Qs ** 2 + Us ** 2)
+    amp_norm = amp / (amp.max() + 1e-30)
+    Vx = amp_norm * np.cos(psi)
+    Vy = amp_norm * np.sin(psi)
+
+    fig = plt.figure(figsize=(13, 6))
+
+    # Left: temperature anisotropy with polarization vectors
+    ax1 = fig.add_subplot(1, 2, 1)
+    extent = [0.0, 360.0, 180.0, 0.0]
+    sigma_T = max(delta_uK.std(), 1e-30)
+    im = ax1.imshow(delta_uK, extent=extent, aspect="auto",
+                    cmap="RdBu_r", vmin=-3 * sigma_T, vmax=3 * sigma_T)
+    ax1.quiver(np.degrees(PH), np.degrees(TH), Vx, -Vy,
+               color="black", pivot="middle", headwidth=0,
+               headlength=0, headaxislength=0,
+               scale=25, width=0.0025, alpha=0.7)
+    ax1.set_xlabel("longitude phi [deg]")
+    ax1.set_ylabel("colatitude theta [deg]")
+    ax1.set_title("Temperature anisotropy + polarization (E-mode only)")
+    fig.colorbar(im, ax=ax1, fraction=0.04, pad=0.02,
+                 label=r"$\delta T$ [$\mu$K]")
+
+    # Right: B-mode null plot
+    ax2 = fig.add_subplot(1, 2, 2)
+    bb_substrate = sim.bb_spectrum(ells)
+    sim_inflation = CMBSimulator(r_tensor=0.05)
+    bb_inflation_005 = sim_inflation.bb_spectrum(ells)
+    ax2.plot(ells, bb_substrate, "b-", linewidth=2,
+             label="substrate (r=0): lensing only")
+    ax2.plot(ells, bb_inflation_005, "r--", linewidth=1.5,
+             label="inflation r=0.05 (illustrative)")
+    ax2.axhline(LENSING_B_PEAK_AMPLITUDE_UK2, color="gray",
+                linestyle=":", linewidth=1.0,
+                label=f"lensing peak ~ {LENSING_B_PEAK_AMPLITUDE_UK2:.0e} uK^2")
+    ax2.set_xlim(2, 2000)
+    ax2.set_yscale("log")
+    ax2.set_ylim(1e-7, 1e-1)
+    ax2.set_xlabel("multipole l")
+    ax2.set_ylabel(r"$D_\ell^{BB}$  [$\mu$K$^2$]")
+    ax2.set_title("B-mode null: substrate r=0 vs inflation")
+    ax2.grid(True, alpha=0.3, which="both")
+    ax2.legend(loc="upper right", fontsize=9)
+
+    fig.suptitle(
+        "CMB polarization (substrate framework): E-mode only, B-mode null",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "37_cmb_polarization.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Quantum measurement & decoherence (double-slit + density matrix + CHSH)
+# ---------------------------------------------------------------------------
+
+def render_quantum_measurement() -> list[str]:
+    """Produce 42_double_slit.png and 43_decoherence.png.
+
+    42: Two-slit screen intensity I(x) for low γ (interference fringes)
+        vs high γ (which-slit / detector pattern), plus the visibility
+        crossover V(γ).
+    43: Density-matrix coherence |ρ_{12}(t)| decay vs γ, plus a Bloch
+        sphere shrink panel and CHSH/Tsirelson saturation panel showing
+        the substrate violates the classical LHV bound 2 (predicts 2√2).
+    """
+    from src.stiff_medium.quantum_measurement_paired import (
+        DecoherenceSimulator,
+        DoubleSlitGeometry,
+        classical_chsh_bound,
+        substrate_chsh_value,
+        visibility_vs_gamma,
+    )
+    out: list[str] = []
+
+    # ---- 42: double-slit interference vs detector pattern --------------
+    fig = plt.figure(figsize=(15, 6))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.4, 1.4, 1.0])
+    ax_low = fig.add_subplot(gs[0, 0])
+    ax_high = fig.add_subplot(gs[0, 1])
+    ax_vis = fig.add_subplot(gs[0, 2])
+
+    geom_low = DoubleSlitGeometry(
+        slit_separation=1.0e-5, slit_width=2.0e-6,
+        screen_distance=1.0, wavelength=5.0e-7,
+        gamma=0.0, wave_speed=1.0,
+    )
+    fs = geom_low.fringe_spacing()
+    x = np.linspace(-6.0 * fs, 6.0 * fs, 1601)
+
+    # Panel A: gamma = 0 -- full coherence, fringes
+    i_low = geom_low.intensity(x)
+    ax_low.plot(x * 1e3, i_low, "b-", linewidth=1.6,
+                label="I(x) = E(x).(1+cos phi)")
+    ax_low.fill_between(x * 1e3, 0, i_low, color="blue", alpha=0.15)
+    ax_low.set_xlabel("screen position x [mm]", fontsize=10)
+    ax_low.set_ylabel("intensity I(x) [arb]", fontsize=10)
+    ax_low.set_title(
+        f"gamma = 0   (low decoherence)\n"
+        f"INTERFERENCE  --  V = {geom_low.visibility(x):.3f}\n"
+        f"fringe spacing dx = lambda L/d = {fs*1e3:.3f} mm",
+        fontsize=10,
+    )
+    ax_low.grid(True, alpha=0.3)
+    ax_low.legend(fontsize=8, loc="upper right")
+
+    # Panel B: gamma >> 1 -- full decoherence, detector pattern
+    geom_high = DoubleSlitGeometry(
+        slit_separation=1.0e-5, slit_width=2.0e-6,
+        screen_distance=1.0, wavelength=5.0e-7,
+        gamma=200.0, wave_speed=1.0,
+    )
+    i_high = geom_high.intensity(x)
+    ax_high.plot(x * 1e3, i_high, "r-", linewidth=1.6,
+                 label="I(x) -> E(x)  (cross-term killed)")
+    ax_high.fill_between(x * 1e3, 0, i_high, color="red", alpha=0.15)
+    ax_high.set_xlabel("screen position x [mm]", fontsize=10)
+    ax_high.set_ylabel("intensity I(x) [arb]", fontsize=10)
+    ax_high.set_title(
+        f"gamma = {geom_high.gamma:.0f}  (high decoherence)\n"
+        f"DETECTOR PATTERN  --  V = {geom_high.visibility(x):.3f}\n"
+        "no fringes: smooth single-slit envelope",
+        fontsize=10,
+    )
+    ax_high.grid(True, alpha=0.3)
+    ax_high.legend(fontsize=8, loc="upper right")
+
+    # Panel C: visibility crossover V(gamma)
+    geom_scan = DoubleSlitGeometry(slit_width=0.0)  # remove envelope
+    vg = visibility_vs_gamma(
+        geom=geom_scan,
+        gammas=np.logspace(-3.0, 3.0, 80),
+    )
+    ax_vis.semilogx(vg["gammas"], vg["visibility"], "k-", linewidth=2.0,
+                    label="V(gamma)")
+    ax_vis.axhline(1.0, color="blue", linestyle="--", linewidth=1.0,
+                   alpha=0.6, label="full coherence")
+    ax_vis.axhline(0.0, color="red", linestyle="--", linewidth=1.0,
+                   alpha=0.6, label="full decoherence")
+    ax_vis.set_xlabel("substrate drag gamma", fontsize=10)
+    ax_vis.set_ylabel("fringe visibility V", fontsize=10)
+    ax_vis.set_title("V(gamma): smooth crossover\ninterference -> detector",
+                     fontsize=10)
+    ax_vis.set_ylim(-0.05, 1.1)
+    ax_vis.grid(True, alpha=0.3, which="both")
+    ax_vis.legend(fontsize=8, loc="lower left")
+
+    fig.suptitle(
+        "Substrate double-slit:  gamma=0 -> interference;  gamma>>1 -> detector pattern\n"
+        "Same physics from L = 1/2 rho (d_t u)^2 - 1/2 K |grad u|^2 - V(u) - gamma u (d_t u);  "
+        "gamma is the only knob that changes",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "42_double_slit.png"))
+
+    # ---- 43: density-matrix decoherence + Bloch shrink + CHSH ----------
+    fig = plt.figure(figsize=(16, 6))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.3, 1.0, 1.3])
+    ax_coh = fig.add_subplot(gs[0, 0])
+    ax_bloch = fig.add_subplot(gs[0, 1], projection="3d")
+    ax_chsh = fig.add_subplot(gs[0, 2])
+
+    # Coherence decay for a gamma ladder
+    gammas = [0.0, 0.1, 0.3, 1.0, 3.0]
+    palette = plt.cm.viridis(np.linspace(0.1, 0.9, len(gammas)))
+    for g, color in zip(gammas, palette):
+        sim = DecoherenceSimulator(gamma=float(g), n_steps=200, dt=0.05,
+                                    initial_state="plus")
+        out_run = sim.run()
+        ax_coh.plot(out_run["t"], out_run["coherence"],
+                    color=color, linewidth=1.8, label=f"gamma = {g:.2f}")
+    ax_coh.axhline(0.5, color="black", linestyle=":", linewidth=1.0,
+                   alpha=0.5, label="initial |rho_12| = 1/2")
+    ax_coh.axhline(0.0, color="red", linestyle="--", linewidth=1.0,
+                   alpha=0.5, label="fully mixed")
+    ax_coh.set_xlabel("time t  [arb units]", fontsize=10)
+    ax_coh.set_ylabel("|rho_12(t)|  =  1/2 exp(-gamma t)", fontsize=10)
+    ax_coh.set_title(
+        "Off-diagonal coherence decay\n"
+        "drag gamma kills coherence, populations preserved",
+        fontsize=10,
+    )
+    ax_coh.legend(fontsize=8, loc="upper right")
+    ax_coh.grid(True, alpha=0.3)
+
+    # Bloch sphere shrinking under gamma
+    u_sph, v_sph = np.mgrid[0:2*np.pi:30j, 0:np.pi:15j]
+    xs = np.cos(u_sph) * np.sin(v_sph)
+    ys = np.sin(u_sph) * np.sin(v_sph)
+    zs = np.cos(v_sph)
+    ax_bloch.plot_wireframe(xs, ys, zs, color="gray", alpha=0.18,
+                             linewidth=0.6)
+    sim_b = DecoherenceSimulator(gamma=1.0, n_steps=120, dt=0.05,
+                                  initial_state="plus")
+    out_b = sim_b.run()
+    rxs, rys, rzs = [], [], []
+    for rho in out_b["rho"]:
+        rx, ry, rz = sim_b.bloch_vector(rho)
+        rxs.append(rx); rys.append(ry); rzs.append(rz)
+    rxs = np.array(rxs); rys = np.array(rys); rzs = np.array(rzs)
+    ax_bloch.plot(rxs, rys, rzs, color="orange", linewidth=2.5,
+                  label="Bloch vector r(t)")
+    ax_bloch.scatter([rxs[0]], [rys[0]], [rzs[0]], color="blue", s=70,
+                     edgecolors="black", linewidths=1.0,
+                     label="|+> pure", zorder=5)
+    ax_bloch.scatter([rxs[-1]], [rys[-1]], [rzs[-1]], color="red", s=70,
+                     edgecolors="black", linewidths=1.0,
+                     label="r -> 0 mixed", zorder=5)
+    ax_bloch.quiver(0, 0, 0, 1.0, 0, 0, color="black", alpha=0.4,
+                    arrow_length_ratio=0.1, linewidth=1.0)
+    ax_bloch.text(1.15, 0, 0, "x", fontsize=9)
+    ax_bloch.text(0, 1.15, 0, "y", fontsize=9)
+    ax_bloch.text(0, 0, 1.15, "z", fontsize=9)
+    ax_bloch.set_title("Bloch sphere: r -> 0 under gamma\n(populations stay; coherence dies)",
+                       fontsize=10)
+    ax_bloch.set_xlim(-1.1, 1.1); ax_bloch.set_ylim(-1.1, 1.1); ax_bloch.set_zlim(-1.1, 1.1)
+    ax_bloch.set_box_aspect((1, 1, 1))
+    ax_bloch.legend(fontsize=7, loc="upper left")
+    ax_bloch.set_xticks([-1, 0, 1])
+    ax_bloch.set_yticks([-1, 0, 1])
+    ax_bloch.set_zticks([-1, 0, 1])
+
+    # CHSH panel: substrate vs classical bound
+    cs = np.linspace(0.0, 1.0, 200)
+    chsh = np.array([
+        DecoherenceSimulator.chsh_value(decoherence_factor=float(c))
+        for c in cs
+    ])
+    ax_chsh.plot(cs, chsh, "b-", linewidth=2.0,
+                 label="|S(c)| = 2*sqrt(2) * c  (substrate)")
+    ax_chsh.axhline(substrate_chsh_value(), color="purple",
+                    linestyle="--", linewidth=1.5,
+                    label=f"Tsirelson 2*sqrt(2) = {substrate_chsh_value():.3f}")
+    ax_chsh.axhline(classical_chsh_bound(), color="red",
+                    linestyle="--", linewidth=1.5,
+                    label=f"classical LHV bound = {classical_chsh_bound():.0f}")
+    c_violate = 2.0 / (2.0 * np.sqrt(2.0))
+    ax_chsh.axvspan(c_violate, 1.0, color="green", alpha=0.12,
+                    label=f"Bell violation  (c > {c_violate:.3f})")
+    ax_chsh.set_xlabel("substrate coherence factor c = exp(-gamma t)", fontsize=10)
+    ax_chsh.set_ylabel("CHSH |S|", fontsize=10)
+    ax_chsh.set_title(
+        "Substrate Bell violation:  2*sqrt(2) > 2 (no LHV)\n"
+        "drag gamma smoothly tunes between QM and classical",
+        fontsize=10,
+    )
+    ax_chsh.set_xlim(0.0, 1.0)
+    ax_chsh.set_ylim(0.0, 3.0)
+    ax_chsh.legend(fontsize=8, loc="upper left")
+    ax_chsh.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Substrate decoherence:  rho_12(t) = rho_12(0)*exp(-gamma t);  "
+        "Bloch radius shrinks; CHSH 2*sqrt(2) -> 0 under gamma",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "43_decoherence.png"))
+
     return out
 
 
@@ -1162,6 +1965,20 @@ def main() -> None:
          render_bound_state_3d),
         ("Lagrangian-term contributions (kin/grad/pot/drag)",
          render_lagrangian_terms),
+        ("Black-hole horizon + Hawking + ringdown (paired σ=½ saturation)",
+         render_black_hole),
+        ("Cosmological phase transition (bubbles, percolation, Γ(T))",
+         render_phase_transition),
+        ("BBH GW signal (inspiral + merger + ringdown, σ→½ QNM)",
+         render_gw_signal),
+        ("Hubble tension (substrate H_0 = 71.92 vs SH0ES vs Planck)",
+         render_hubble),
+        ("3D substrate field full-evolution movie (32³ iso-surfaces)",
+         render_substrate_3d_movie),
+        ("CMB power spectrum + polarization (paired GEOMETRY+SIM+VIZ)",
+         render_cmb),
+        ("Quantum measurement & decoherence (double-slit + density matrix + CHSH)",
+         render_quantum_measurement),
         ("Substrate visualizer", render_substrate_visualizer),
     ]
     all_paths = []
