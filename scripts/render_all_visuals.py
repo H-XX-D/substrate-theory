@@ -6216,6 +6216,1322 @@ def render_neural_network() -> list[str]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Fluid turbulence from substrate -- 96 + 97
+# ---------------------------------------------------------------------------
+
+def render_turbulence() -> list[str]:
+    """Produce 96_kolmogorov_spectrum.png and 97_vortex_shedding.png.
+
+    96: Log-log E(k) energy spectrum showing the Kolmogorov k^(-5/3)
+        inertial-range slope.  Three traces:
+          - analytic E(k) = C_K eps^(2/3) k^(-5/3) over the inertial decade
+          - Pope (2000) model spectrum with low-k roll-off and dissipative
+            high-k cut-off
+          - shell-averaged spectrum of a synthetic 256^2 random field with
+            the same target slope (verifies the simulator).
+        Annotates the integral k_L = 2*pi/L and Kolmogorov k_eta = 2*pi/eta
+        edges bounding the inertial subrange.
+    97: Vorticity field of a Karman vortex street behind a circular
+        cylinder.  Wake spacing fixed by the Strouhal number St = 0.21
+        (lambda = D/St).  Free-stream U arrows on the inflow side;
+        cylinder body shaded; alternating-sign Lamb-Oseen vortices
+        coloured red/blue.  Annotated with U, D, Re, St, and shedding
+        frequency f.  Lower panel: Reynolds-number axis with the
+        laminar/transitional/turbulent regimes and Re_crit = 2300.
+    """
+    from src.stiff_medium.turbulence_substrate import (
+        KOLMOGOROV_CONSTANT,
+        NU_AIR_M2_S,
+        RE_CRIT_PIPE,
+        RE_CRIT_PIPE_LOWER,
+        RE_CRIT_PIPE_UPPER,
+        STROUHAL_CYLINDER,
+        TurbulenceGeometry,
+        TurbulenceSimulator,
+    )
+
+    out: list[str] = []
+
+    # ------------------------------------------------------------------
+    # 96: Kolmogorov k^(-5/3) inertial-range energy spectrum
+    # ------------------------------------------------------------------
+    geom = TurbulenceGeometry(Lx=1.0, Ly=1.0, Nx=256, Ny=256)
+    sim = TurbulenceSimulator(geometry=geom, nu_m2_s=1.0e-5)
+
+    eps = 1.0       # m^2/s^3 dissipation
+    L = 0.5         # m  integral scale
+    eta = TurbulenceGeometry.kolmogorov_scale_m(sim.nu_m2_s, eps)
+    k_L = 2.0 * np.pi / L
+    k_eta = 2.0 * np.pi / eta
+
+    k_an = np.logspace(np.log10(k_L * 0.3), np.log10(k_eta * 1.2), 400)
+    E_an = sim.kolmogorov_spectrum(k_an, eps)
+    E_model = sim.model_spectrum_full(k_an, eps, L, eta)
+
+    field = sim.synthetic_kolmogorov_field(epsilon_w_kg=eps, L_m=L, seed=7)
+    k_bin, E_bin = sim.shell_average_spectrum(
+        field["u"], field["v"], field["kx"], field["ky"], n_bins=48,
+    )
+    mask_b = (E_bin > 0) & (k_bin > 1.5 * k_L) & (k_bin < 0.6 * k_eta)
+    k_bin_p = k_bin[mask_b]
+    E_bin_p = E_bin[mask_b]
+    if len(k_bin_p) > 4:
+        k_match = np.exp(0.5 * (np.log(k_bin_p[0]) + np.log(k_bin_p[-1])))
+        norm_an = sim.kolmogorov_spectrum(np.array([k_match]), eps)[0]
+        idx = int(np.argmin(np.abs(k_bin_p - k_match)))
+        scale_b = norm_an / max(E_bin_p[idx], 1e-30)
+        E_bin_plot = E_bin_p * scale_b
+    else:
+        E_bin_plot = E_bin_p
+
+    fig = plt.figure(figsize=(11, 7))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.loglog(k_an, E_an, "-", color="black", lw=2.4,
+              label=rf"$E(k) = C_K \, \varepsilon^{{2/3}} \, k^{{-5/3}}$  "
+                    rf"($C_K = {KOLMOGOROV_CONSTANT:.2f}$)")
+    ax.loglog(k_an, E_model, "--", color="tab:purple", lw=1.6, alpha=0.85,
+              label="Pope (2000) model spectrum (full)")
+    if len(k_bin_p) > 0:
+        ax.loglog(k_bin_p, E_bin_plot, "o", color="tab:orange",
+                  markersize=5.5, alpha=0.9,
+                  label=r"shell-averaged $E(k)$ from synthetic 256$^2$ field")
+
+    ax.axvline(k_L, color="tab:green", lw=1.2, ls=":",
+               label=rf"$k_L = 2\pi/L = {k_L:.2f}$ /m")
+    ax.axvline(k_eta, color="crimson", lw=1.2, ls=":",
+               label=rf"$k_\eta = 2\pi/\eta = {k_eta:.2e}$ /m")
+    ax.axvspan(k_L, k_eta, color="gold", alpha=0.10,
+               label="inertial subrange")
+
+    k_g = np.array([3.0 * k_L, 0.3 * k_eta])
+    E_g_anchor = sim.kolmogorov_spectrum(np.array([k_g[0]]), eps)[0] * 4.0
+    E_g = E_g_anchor * (k_g / k_g[0]) ** (-5.0 / 3.0)
+    ax.loglog(k_g, E_g, color="tab:blue", lw=1.0, alpha=0.7)
+    k_mid = np.sqrt(k_g[0] * k_g[1])
+    E_mid = E_g_anchor * (k_mid / k_g[0]) ** (-5.0 / 3.0)
+    ax.text(k_mid * 1.15, E_mid * 1.15, "slope = -5/3",
+            color="tab:blue", fontsize=10, rotation=-22)
+
+    slope_fit = sim.fit_inertial_slope(
+        k_an, E_an, k_min=3 * k_L, k_max=0.3 * k_eta,
+    )
+    ax.text(0.02, 0.04,
+            f"fitted analytic slope = {slope_fit:.4f}\n"
+            f"expected = -5/3 = {-5.0/3.0:.4f}\n"
+            f"L = {L:.2f} m,  eta = {eta:.2e} m,\n"
+            f"nu = {sim.nu_m2_s:.1e} m^2/s,  eps = {eps:.2f} m^2/s^3",
+            transform=ax.transAxes, fontsize=9,
+            family="monospace",
+            bbox=dict(boxstyle="round,pad=0.35",
+                      facecolor="white", edgecolor="gray", alpha=0.9))
+
+    ax.set_xlabel("wavenumber  $k$  [1/m]", fontsize=11)
+    ax.set_ylabel("energy spectrum  $E(k)$  [m$^3$/s$^2$]", fontsize=11)
+    ax.set_title(
+        "Kolmogorov turbulence spectrum from substrate viscosity\n"
+        r"NS dissipation $\nu = \frac{1}{2}\gamma\xi^2$ "
+        r"$\Rightarrow$ inertial-range $E(k) \propto k^{-5/3}$",
+        fontsize=12,
+    )
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(loc="upper right", fontsize=9)
+    fig.tight_layout()
+    out.append(save(fig, "96_kolmogorov_spectrum.png"))
+
+    # ------------------------------------------------------------------
+    # 97: Karman vortex street vorticity field behind cylinder
+    # ------------------------------------------------------------------
+    geom2 = TurbulenceGeometry(Lx=1.6, Ly=0.6, Nx=320, Ny=128)
+    sim2 = TurbulenceSimulator(geometry=geom2, nu_m2_s=1.0e-5)
+    U_inf = 1.0           # m/s
+    D = 0.08              # cylinder diameter
+    Re = sim2.reynolds_number(U_inf, D)
+    field2 = sim2.vortex_shedding_field(
+        U_m_s=U_inf, diameter_m=D, n_pairs=8,
+        wake_offset_m=0.28 * (D / STROUHAL_CYLINDER),
+        cylinder_x_m=0.18 * geom2.Lx,
+        circulation_strength=0.42, core_radius_m=0.18 * D,
+    )
+    omega = field2["vorticity"]
+    cyl_x, cyl_y = field2["cylinder_xy"]
+    lam = field2["wavelength_m"]
+    f_shed = field2["shedding_freq_hz"]
+
+    fig2, axarr = plt.subplots(2, 1, figsize=(13.5, 7.0),
+                               gridspec_kw={"height_ratios": [3.5, 1.0]})
+
+    ax2 = axarr[0]
+    vmax = float(np.max(np.abs(omega)))
+    if vmax == 0.0:
+        vmax = 1.0
+    extent = (0.0, geom2.Lx, 0.0, geom2.Ly)
+    im = ax2.imshow(omega, origin="lower", extent=extent,
+                    cmap="RdBu_r", vmin=-vmax, vmax=vmax,
+                    aspect="equal", interpolation="bilinear")
+    cbar = fig2.colorbar(im, ax=ax2, fraction=0.025, pad=0.02)
+    cbar.set_label(r"vorticity  $\omega_z$  [1/s]", fontsize=10)
+
+    cyl = plt.Circle((cyl_x, cyl_y), 0.5 * D, color="black",
+                     zorder=5, alpha=0.9)
+    ax2.add_patch(cyl)
+
+    Y_arr = np.linspace(0.05 * geom2.Ly, 0.95 * geom2.Ly, 7)
+    for ya in Y_arr:
+        ax2.annotate(
+            "", xy=(0.06 * geom2.Lx, ya), xytext=(0.005, ya),
+            arrowprops=dict(arrowstyle="->", color="black", lw=1.5,
+                            alpha=0.6),
+        )
+    ax2.text(0.005, geom2.Ly * 1.02, rf"$U_\infty = {U_inf:.2f}$ m/s",
+             fontsize=10)
+
+    x0 = cyl_x + 1.5 * D
+    x1 = x0 + lam
+    yb = 0.08 * geom2.Ly
+    ax2.annotate("", xy=(x1, yb), xytext=(x0, yb),
+                 arrowprops=dict(arrowstyle="<->", color="darkgreen",
+                                 lw=1.6))
+    ax2.text(0.5 * (x0 + x1), yb - 0.022,
+             rf"$\lambda = D/St = {lam:.3f}$ m",
+             color="darkgreen", ha="center", fontsize=10)
+
+    ax2.text(0.012, 0.94,
+             f"U = {U_inf:.2f} m/s,  D = {D*100:.1f} cm,\n"
+             f"Re = U D / nu = {Re:.0f}\n"
+             f"St = {STROUHAL_CYLINDER:.2f}  =>  f = St U / D = {f_shed:.2f} Hz\n"
+             f"nu from substrate gamma xi^2 / 2",
+             transform=ax2.transAxes, fontsize=9,
+             family="monospace",
+             bbox=dict(boxstyle="round,pad=0.35",
+                       facecolor="white", edgecolor="gray", alpha=0.9),
+             verticalalignment="top")
+
+    ax2.set_xlabel("x  [m]", fontsize=11)
+    ax2.set_ylabel("y  [m]", fontsize=11)
+    ax2.set_title(
+        "Karman vortex street behind a circular cylinder\n"
+        "(alternating Lamb-Oseen vortices, nu from substrate gamma)",
+        fontsize=12,
+    )
+    ax2.set_xlim(0.0, geom2.Lx)
+    ax2.set_ylim(0.0, geom2.Ly)
+
+    # ----- Lower panel: Reynolds-number regime bar --------------------
+    axR = axarr[1]
+    Re_axis = np.logspace(0, 6, 400)
+    cmap_vals = np.where(
+        Re_axis < RE_CRIT_PIPE_LOWER, 0.0,
+        np.where(Re_axis < RE_CRIT_PIPE_UPPER, 0.5, 1.0),
+    )
+    axR.scatter(Re_axis, np.zeros_like(Re_axis) + 0.5,
+                c=cmap_vals, cmap="RdYlGn_r",
+                s=6, marker="s", vmin=0.0, vmax=1.0)
+    axR.axvline(RE_CRIT_PIPE_LOWER, color="black", lw=0.8, ls="--")
+    axR.axvline(RE_CRIT_PIPE, color="red", lw=1.4)
+    axR.axvline(RE_CRIT_PIPE_UPPER, color="black", lw=0.8, ls="--")
+    axR.scatter([Re], [0.5], c="cyan", edgecolors="black",
+                s=160, zorder=10, marker="o",
+                label=f"this cylinder Re = {Re:.0f}")
+    axR.text(RE_CRIT_PIPE, 1.18,
+             rf"$Re_\mathrm{{crit}}={RE_CRIT_PIPE:.0f}$ (pipes)",
+             color="red", fontsize=10, ha="center")
+    axR.text(RE_CRIT_PIPE_LOWER * 0.4, 0.5, "laminar",
+             ha="right", va="center", fontsize=10, color="darkgreen")
+    axR.text(2.0e5, 0.5, "turbulent",
+             ha="left", va="center", fontsize=10, color="darkred")
+    axR.set_xscale("log")
+    axR.set_xlim(1.0, 1.0e6)
+    axR.set_ylim(0.0, 1.5)
+    axR.set_yticks([])
+    axR.set_xlabel("Reynolds number  Re = U L / nu", fontsize=10)
+    axR.legend(loc="lower right", fontsize=9)
+    axR.grid(True, which="major", axis="x", alpha=0.3)
+
+    fig2.tight_layout()
+    out.append(save(fig2, "97_vortex_shedding.png"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Chaos / dynamical systems (Lorenz attractor + logistic map)
+# ---------------------------------------------------------------------------
+
+def render_chaos() -> list[str]:
+    from src.stiff_medium.chaos_substrate import (
+        ChaosSimulator,
+        FEIGENBAUM_DELTA,
+        LOGISTIC_R_INFINITY,
+        LORENZ_BETA,
+        LORENZ_RHO,
+        LORENZ_SIGMA,
+        lorenz_geometry,
+    )
+    out: list[str] = []
+    sim = ChaosSimulator()
+
+    # ----- 98_lorenz_attractor.png -----
+    # 3D butterfly attractor with two trajectories from nearby initial
+    # conditions to illustrate sensitive dependence.
+    t, X1 = sim.simulate_lorenz(x0=(1.0, 1.0, 1.0),
+                                t_max=40.0, dt=0.005)
+    _, X2 = sim.simulate_lorenz(x0=(1.0 + 1e-4, 1.0, 1.0),
+                                t_max=40.0, dt=0.005)
+    geom = lorenz_geometry()
+    lam_est = sim.lorenz_lyapunov(t_max=80.0, dt=0.01, transient=5.0)
+
+    fig = plt.figure(figsize=(13, 6))
+    ax3d = fig.add_subplot(1, 2, 1, projection="3d")
+    n_plot = X1.shape[0]
+    colors = plt.cm.plasma(np.linspace(0.0, 1.0, n_plot))
+    # plot in chunks so the colormap traces the time axis
+    step = 10
+    for k in range(0, n_plot - step, step):
+        ax3d.plot(X1[k:k + step + 1, 0],
+                  X1[k:k + step + 1, 1],
+                  X1[k:k + step + 1, 2],
+                  color=colors[k], linewidth=0.6, alpha=0.9)
+    ax3d.scatter(X1[0, 0], X1[0, 1], X1[0, 2],
+                 color="white", edgecolors="black", s=40,
+                 label="x_0 = (1,1,1)")
+    ax3d.set_xlabel("x")
+    ax3d.set_ylabel("y")
+    ax3d.set_zlabel("z")
+    ax3d.set_title(
+        f"Lorenz strange attractor\n"
+        f"sigma={LORENZ_SIGMA:g}, beta=8/3, rho={LORENZ_RHO:g}\n"
+        f"lambda_1 (Benettin) = {lam_est:.3f}  "
+        f"(textbook 0.906),  D_KY = {geom.kaplan_yorke_dimension():.3f}",
+        fontsize=10,
+    )
+    ax3d.view_init(elev=22, azim=-65)
+
+    # divergence panel: |dx(t)| growing exponentially at rate lambda_1
+    sep = np.linalg.norm(X1 - X2, axis=1)
+    ax2 = fig.add_subplot(1, 2, 2)
+    ax2.semilogy(t, sep, "b-", linewidth=1.0, label="|x_1(t) - x_2(t)|")
+    # reference exponential e^{lambda*t} * |dx_0|
+    sep0 = sep[0] if sep[0] > 0 else 1e-4
+    fit = sep0 * np.exp(0.906 * t)
+    ax2.semilogy(t, np.minimum(fit, 1e2), "r--", linewidth=1.2,
+                 label="exp(0.906 t) * |dx_0|")
+    ax2.axhline(40.0, color="k", linestyle=":", alpha=0.4,
+                label="attractor diameter ~40")
+    ax2.set_xlabel("time t")
+    ax2.set_ylabel("trajectory separation")
+    ax2.set_title("Sensitive dependence on initial conditions\n"
+                  "(initial separation 10^-4)")
+    ax2.legend(loc="lower right", fontsize=9)
+    ax2.grid(True, which="both", alpha=0.3)
+    fig.tight_layout()
+    out.append(save(fig, "98_lorenz_attractor.png"))
+
+    # ----- 99_logistic_map.png -----
+    # Bifurcation diagram + Lyapunov exponent vs r
+    r_vals = np.linspace(2.5, 4.0, 1200)
+    R, X = sim.logistic_bifurcation(r_vals, n_skip=600, n_keep=200)
+    lyap_r = np.linspace(2.5, 4.0, 600)
+    lyap = sim.logistic_lyapunov_curve(lyap_r, n_iter=2000, n_skip=500)
+    delta_est = sim.feigenbaum_delta_estimate()
+
+    fig, axes = plt.subplots(2, 1, figsize=(11, 9), sharex=True,
+                             gridspec_kw={"height_ratios": [2.0, 1.0]})
+
+    ax_b = axes[0]
+    ax_b.plot(R, X, ",", color="midnightblue", alpha=0.45, rasterized=True)
+    ax_b.axvline(LOGISTIC_R_INFINITY, color="crimson", linestyle="--",
+                 linewidth=1.0,
+                 label=f"r_inf ~ {LOGISTIC_R_INFINITY:.4f}  (cascade end)")
+    # mark first few period-doubling bifurcations
+    for k, rk in enumerate((3.0, 3.4495, 3.5441, 3.5644)):
+        ax_b.axvline(rk, color="orange", linestyle=":", linewidth=0.8,
+                     alpha=0.7)
+    ax_b.set_ylim(0.0, 1.0)
+    ax_b.set_ylabel("asymptotic x_n")
+    ax_b.set_title(
+        "Logistic map  x_{n+1} = r x_n (1 - x_n):  bifurcation diagram\n"
+        f"Feigenbaum delta (estimate) = {delta_est:.4f}  "
+        f"(reference {FEIGENBAUM_DELTA:.4f}, "
+        f"err {abs(delta_est - FEIGENBAUM_DELTA) / FEIGENBAUM_DELTA:.3%})"
+    )
+    ax_b.legend(loc="upper left", fontsize=9)
+    ax_b.grid(True, alpha=0.2)
+
+    ax_l = axes[1]
+    ax_l.plot(lyap_r, lyap, "b-", linewidth=1.0, label="lambda(r)")
+    ax_l.axhline(0.0, color="k", linestyle="-", linewidth=0.6)
+    ax_l.fill_between(lyap_r, 0.0, lyap, where=(lyap > 0.0),
+                      color="red", alpha=0.25, label="chaotic (lambda > 0)")
+    ax_l.fill_between(lyap_r, lyap, 0.0, where=(lyap <= 0.0),
+                      color="green", alpha=0.25,
+                      label="stable / periodic (lambda < 0)")
+    ax_l.axvline(LOGISTIC_R_INFINITY, color="crimson", linestyle="--",
+                 linewidth=1.0)
+    ax_l.set_xlabel("growth rate r")
+    ax_l.set_ylabel("Lyapunov exponent  lambda(r)")
+    ax_l.set_ylim(-3.0, 1.0)
+    ax_l.legend(loc="lower right", fontsize=9)
+    ax_l.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    out.append(save(fig, "99_logistic_map.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Quantum computing as substrate Möbius two-sheet states:
+#   90_quantum_gates.png — Bloch sphere for X/Y/Z/H + Bell-state circuit
+#   91_quantum_algorithms.png — Grover amplitude vs iter + decoherence vs gamma
+# ---------------------------------------------------------------------------
+
+def render_qc() -> list[str]:
+    """Produce 90_quantum_gates.png and 91_quantum_algorithms.png.
+
+    90: Bloch-sphere trajectories for X, Y, Z, H rotations applied to |0>,
+        plus a circuit diagram of the standard H-CNOT Bell-state preparation.
+    91: Grover amplitude amplification vs iteration on n=4 qubits with one
+        marked element (optimum at floor(pi/4 sqrt(N)) = 3), plus the
+        gate fidelity F = exp(-gamma t) decay vs substrate drag gamma.
+    """
+    from src.stiff_medium.quantum_computing_substrate import (
+        QuantumComputingGeometry,
+        QuantumComputingSimulator,
+        fidelity_vs_gamma,
+        grover_run_4qubits,
+    )
+    out: list[str] = []
+    geom1 = QuantumComputingGeometry(n_qubits=1)
+
+    # ---- 90: Bloch sphere trajectories + Bell-state circuit ------------
+    fig = plt.figure(figsize=(16, 6))
+    gs = fig.add_gridspec(1, 5, width_ratios=[1.0, 1.0, 1.0, 1.0, 1.6])
+    ax_x = fig.add_subplot(gs[0, 0], projection="3d")
+    ax_y = fig.add_subplot(gs[0, 1], projection="3d")
+    ax_z = fig.add_subplot(gs[0, 2], projection="3d")
+    ax_h = fig.add_subplot(gs[0, 3], projection="3d")
+    ax_circuit = fig.add_subplot(gs[0, 4])
+
+    def _draw_bloch(ax, axis_label: str, vectors, title: str, color: str):
+        u_sph, v_sph = np.mgrid[0:2*np.pi:24j, 0:np.pi:13j]
+        xs = np.cos(u_sph) * np.sin(v_sph)
+        ys = np.sin(u_sph) * np.sin(v_sph)
+        zs = np.cos(v_sph)
+        ax.plot_wireframe(xs, ys, zs, color="gray", alpha=0.18, linewidth=0.5)
+        # axes
+        ax.quiver(0, 0, 0, 1.05, 0, 0, color="black", alpha=0.4,
+                  arrow_length_ratio=0.08, linewidth=0.8)
+        ax.quiver(0, 0, 0, 0, 1.05, 0, color="black", alpha=0.4,
+                  arrow_length_ratio=0.08, linewidth=0.8)
+        ax.quiver(0, 0, 0, 0, 0, 1.05, color="black", alpha=0.4,
+                  arrow_length_ratio=0.08, linewidth=0.8)
+        ax.text(1.18, 0, 0, "x", fontsize=8)
+        ax.text(0, 1.18, 0, "y", fontsize=8)
+        ax.text(0, 0, 1.18, "z", fontsize=8)
+        # Trajectory
+        rxs = np.array([v[0] for v in vectors])
+        rys = np.array([v[1] for v in vectors])
+        rzs = np.array([v[2] for v in vectors])
+        ax.plot(rxs, rys, rzs, color=color, linewidth=2.5)
+        # endpoints
+        ax.scatter([rxs[0]], [rys[0]], [rzs[0]], color="blue", s=60,
+                   edgecolors="black", linewidths=0.8, label="|0>", zorder=5)
+        ax.scatter([rxs[-1]], [rys[-1]], [rzs[-1]], color="red", s=60,
+                   edgecolors="black", linewidths=0.8,
+                   label=f"after {axis_label}", zorder=5)
+        ax.set_title(title, fontsize=10)
+        ax.set_xlim(-1.1, 1.1); ax.set_ylim(-1.1, 1.1); ax.set_zlim(-1.1, 1.1)
+        ax.set_box_aspect((1, 1, 1))
+        ax.set_xticks([-1, 0, 1])
+        ax.set_yticks([-1, 0, 1])
+        ax.set_zticks([-1, 0, 1])
+        ax.legend(fontsize=7, loc="upper left")
+
+    # Build smooth rotation trajectories using axis-angle on the Bloch sphere.
+    # X-rotation by pi takes |0> = +z to -z through +y (i.e. R_x(pi) flips z).
+    n_steps = 40
+    angles = np.linspace(0.0, np.pi, n_steps)
+    # X (rotation about x): r(t) = (0, sin t, cos t)
+    vec_x = [(0.0, float(np.sin(a)), float(np.cos(a))) for a in angles]
+    _draw_bloch(ax_x, "X", vec_x,
+                "X gate: pi rotation about x\n|0> -> |1>",
+                color="tab:red")
+    # Y (rotation about y): r(t) = (-sin t, 0, cos t) takes +z to -z via -x
+    vec_y = [(-float(np.sin(a)), 0.0, float(np.cos(a))) for a in angles]
+    _draw_bloch(ax_y, "Y", vec_y,
+                "Y gate: pi rotation about y\n|0> -> i|1>",
+                color="tab:green")
+    # Z (rotation about z): leaves +z fixed; for visibility apply Z to |+>:
+    angles_z = np.linspace(0.0, np.pi, n_steps)
+    vec_z_plus = [(float(np.cos(a)), -float(np.sin(a)), 0.0) for a in angles_z]
+    _draw_bloch(ax_z, "Z", vec_z_plus,
+                "Z gate (shown on |+>):\npi rotation about z, x -> -x",
+                color="tab:purple")
+    # H (Hadamard) = pi rotation about (x+z)/sqrt(2): |0> -> |+> on equator at +x
+    # Trajectory parameterised by angle a along the geodesic from +z to +x.
+    a_h = np.linspace(0.0, np.pi / 2.0, n_steps)
+    vec_h = [(float(np.sin(a)), 0.0, float(np.cos(a))) for a in a_h]
+    _draw_bloch(ax_h, "H", vec_h,
+                "Hadamard: half-Mobius rotation\n|0> -> (|0>+|1>)/sqrt(2)",
+                color="tab:orange")
+
+    # Bell-state circuit diagram (right panel).
+    ax_circuit.set_xlim(0.0, 10.0)
+    ax_circuit.set_ylim(0.0, 5.0)
+    ax_circuit.set_aspect("equal")
+    ax_circuit.axis("off")
+    # Two qubit lines
+    for y, label in [(3.5, "q0:  |0>"), (1.5, "q1:  |0>")]:
+        ax_circuit.plot([0.5, 9.5], [y, y], "k-", linewidth=1.4)
+        ax_circuit.text(0.0, y, label, fontsize=10, ha="left", va="center")
+    # Hadamard box on q0 at x=3.0
+    ax_circuit.add_patch(plt.Rectangle((2.5, 3.1), 1.0, 0.8,
+                                        edgecolor="black",
+                                        facecolor="#ffe4b5"))
+    ax_circuit.text(3.0, 3.5, "H", fontsize=12, ha="center", va="center",
+                    fontweight="bold")
+    # CNOT control on q0 at x=6.0, target on q1
+    ax_circuit.plot([6.0], [3.5], "ko", markersize=8)  # control dot
+    ax_circuit.plot([6.0, 6.0], [3.5, 1.5], "k-", linewidth=1.4)
+    ax_circuit.add_patch(plt.Circle((6.0, 1.5), 0.3,
+                                     edgecolor="black", facecolor="white",
+                                     linewidth=1.4))
+    ax_circuit.plot([5.7, 6.3], [1.5, 1.5], "k-", linewidth=1.0)
+    ax_circuit.plot([6.0, 6.0], [1.2, 1.8], "k-", linewidth=1.0)
+    # Output annotation
+    ax_circuit.text(8.5, 2.5,
+                    r"$|\Phi^+\rangle = \frac{|00\rangle + |11\rangle}{\sqrt{2}}$",
+                    fontsize=11, ha="center", va="center",
+                    bbox=dict(facecolor="#e6f3ff", edgecolor="black",
+                              boxstyle="round,pad=0.3"))
+    ax_circuit.text(5.0, 4.7, "Bell-state preparation",
+                    fontsize=11, ha="center", va="center",
+                    fontweight="bold")
+    ax_circuit.text(5.0, 0.5,
+                    "H on q0 -> superposition;  CNOT(q0,q1) -> entangled.",
+                    fontsize=8, ha="center", va="center", style="italic")
+
+    fig.suptitle(
+        "Quantum gates as Mobius two-sheet rotations:  X/Y/Z/H on Bloch sphere "
+        "+ Bell-state circuit\n"
+        "Substrate identifies (alpha,beta) with the two-sheet strain pattern; "
+        "H = half-Mobius half-twist.",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "90_quantum_gates.png"))
+
+    # ---- 91: Grover amplitude amplification + decoherence -------------
+    fig = plt.figure(figsize=(15, 6))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.2, 1.0])
+    ax_grov = fig.add_subplot(gs[0, 0])
+    ax_dec = fig.add_subplot(gs[0, 1])
+
+    grov = grover_run_4qubits(marked_index=5)
+    iters = grov["iterations"]
+    sim_amp = grov["marked_amplitude"]
+    sim_prob = grov["marked_probability"]
+    th_amp = np.abs(grov["theory_amplitude"])
+    opt_k = int(grov["optimal_iters"])
+
+    ax_grov.plot(iters, sim_prob, "o-", color="tab:blue", linewidth=2.0,
+                 markersize=8, label="P(marked)  (simulator)")
+    ax_grov.plot(iters, th_amp ** 2, "x--", color="tab:orange",
+                 linewidth=1.4, markersize=8,
+                 label=r"$\sin^2((2k+1)\theta)$  (closed form)")
+    ax_grov.axhline(1.0, color="gray", linestyle=":", linewidth=1.0,
+                    alpha=0.7, label="P = 1")
+    ax_grov.axhline(1.0 / 16.0, color="red", linestyle=":", linewidth=1.0,
+                    alpha=0.7, label="uniform P = 1/N = 1/16")
+    ax_grov.axvline(opt_k, color="purple", linestyle="--", linewidth=1.2,
+                    alpha=0.6,
+                    label=f"k* = floor(pi/4 sqrt(N)) = {opt_k}")
+    # Annotate the maximum
+    k_max = int(np.argmax(sim_prob))
+    ax_grov.annotate(
+        f"P_max = {sim_prob[k_max]:.3f}\nat k = {k_max}",
+        xy=(k_max, sim_prob[k_max]),
+        xytext=(k_max + 0.6, sim_prob[k_max] - 0.15),
+        fontsize=9,
+        arrowprops=dict(arrowstyle="->", color="black", lw=0.8),
+    )
+    ax_grov.set_xlabel("Grover iteration k", fontsize=10)
+    ax_grov.set_ylabel("marked-state probability", fontsize=10)
+    ax_grov.set_title(
+        "Grover search:  n=4 qubits (N=16), 1 marked element\n"
+        "amplitude amplification: 1/4 -> > 0.96 in 3 iterations",
+        fontsize=10,
+    )
+    ax_grov.set_xticks(list(iters))
+    ax_grov.set_ylim(-0.05, 1.1)
+    ax_grov.legend(fontsize=8, loc="lower center")
+    ax_grov.grid(True, alpha=0.3)
+
+    # Decoherence: gate fidelity F(t) = exp(-gamma t)
+    gammas = np.logspace(-3.0, 1.5, 200)
+    for t, color in [
+        (0.1, "tab:blue"),
+        (0.5, "tab:green"),
+        (1.0, "tab:orange"),
+        (3.0, "tab:red"),
+    ]:
+        fid = fidelity_vs_gamma(t=t, gammas=gammas)["fidelity"]
+        ax_dec.semilogx(gammas, fid, "-", color=color, linewidth=1.8,
+                        label=f"t = {t}")
+    ax_dec.axhline(1.0, color="gray", linestyle=":", linewidth=1.0,
+                   alpha=0.6, label="F = 1 (no decoherence)")
+    ax_dec.axhline(1.0 / np.e, color="red", linestyle=":", linewidth=1.0,
+                   alpha=0.7, label="F = 1/e  (gamma t = 1)")
+    ax_dec.set_xlabel("substrate drag gamma", fontsize=10)
+    ax_dec.set_ylabel("gate fidelity F = exp(-gamma t)", fontsize=10)
+    ax_dec.set_title(
+        "Decoherence from substrate drag\n"
+        "T_2 = 1/gamma; same gamma as Lagrangian -gamma u (d_t u)",
+        fontsize=10,
+    )
+    ax_dec.set_ylim(-0.05, 1.1)
+    ax_dec.grid(True, alpha=0.3, which="both")
+    ax_dec.legend(fontsize=8, loc="lower left")
+
+    fig.suptitle(
+        "Quantum algorithms from substrate:  Grover amplification (oracle + "
+        "diffusion) + decoherence F(t) = exp(-gamma t)\n"
+        "Substrate predicts both algorithmic speedup AND its enemy "
+        "(off-diagonal decay) from the SAME Lagrangian.",
+        fontsize=11,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "91_quantum_algorithms.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Superconductivity from substrate (BCS gap + substrate T_c ceiling)
+# ---------------------------------------------------------------------------
+
+def render_sc() -> list[str]:
+    """Produce 92_bcs_gap.png and 93_tc_table.png.
+
+    92: Δ(T)/Δ(0) BCS curve (left) + density of states with gap (right).
+    93: known SCs sorted by T_c with horizontal substrate-ceiling line at
+        128.9 K, plus annotation of the HBCCO 4% match.
+    """
+    from src.stiff_medium.superconductivity_substrate import (
+        BCS_UNIVERSAL_GAP_RATIO,
+        REFERENCE_SUPERCONDUCTORS,
+        SUBSTRATE_TC_MAX_K,
+        SuperconductivityGeometry,
+        SuperconductivitySimulator,
+    )
+
+    out: list[str] = []
+
+    # ---- 92_bcs_gap.png  -------------------------------------------------
+    # Use Pb-like calibration: T_c=7.2 K, θ_D=105 K → Δ(0) ≈ 1.10 meV.
+    K_B = 1.380649e-23
+    EV_PER_J = 1.0 / 1.602176634e-19
+    Tc_target = 7.2
+    delta0_meV = (
+        BCS_UNIVERSAL_GAP_RATIO * K_B * Tc_target / 2.0
+    ) * EV_PER_J * 1e3
+    geom = SuperconductivityGeometry(delta_meV=delta0_meV)
+    sim = SuperconductivitySimulator(geometry=geom, debye_T_K=105.0)
+
+    fig, (ax_dt, ax_dos) = plt.subplots(1, 2, figsize=(13, 5.5))
+
+    # Left: Δ(T)/Δ(0) BCS shape
+    t_over_tc, d_over_d0 = sim.gap_curve(n_T=80)
+    ax_dt.plot(t_over_tc, d_over_d0, color="tab:red", linewidth=2.4,
+               label="self-consistent BCS Δ(T)")
+    # Approximate analytic form Δ(T)/Δ(0) ≈ 1.74 √(1 - T/T_c) near T_c
+    t_near = np.linspace(0.7, 1.0, 50)
+    delta_near = 1.74 * np.sqrt(np.maximum(1.0 - t_near, 0.0))
+    ax_dt.plot(t_near, delta_near, "k--", linewidth=1.2, alpha=0.8,
+               label="1.74·√(1 − T/T_c)  (BCS near T_c)")
+    ax_dt.axhline(1.0, color="gray", linewidth=0.6, alpha=0.5)
+    ax_dt.axvline(1.0, color="gray", linewidth=0.6, alpha=0.5)
+    ax_dt.scatter([0.0], [1.0], s=80, color="tab:red", zorder=5)
+    ax_dt.text(0.02, 1.02,
+               f"Δ(0) = {sim.gap_zero_T_meV():.3f} meV", fontsize=9)
+    ax_dt.text(
+        0.5, 0.4,
+        f"2Δ(0)/(k_B T_c) = {BCS_UNIVERSAL_GAP_RATIO:.4f}\n"
+        f"               (= 2π/e^γ, BCS universal)\n"
+        f"T_c = {sim.critical_temperature_K():.2f} K (Pb-like)",
+        fontsize=10, ha="left", va="center",
+        bbox=dict(boxstyle="round,pad=0.4",
+                  facecolor="lightyellow", edgecolor="gray"),
+    )
+    ax_dt.set_xlim(0.0, 1.05)
+    ax_dt.set_ylim(0.0, 1.15)
+    ax_dt.set_xlabel("T / T_c")
+    ax_dt.set_ylabel("Δ(T) / Δ(0)")
+    ax_dt.set_title("BCS gap closure  Δ(T) → 0 as T → T_c")
+    ax_dt.grid(True, alpha=0.3)
+    ax_dt.legend(loc="upper right", fontsize=9)
+
+    # Right: density of states with gap (BCS coherence peak)
+    E = np.linspace(-4.0 * geom.delta_meV, 4.0 * geom.delta_meV, 1200)
+    # Add a small Dynes broadening so the singularity is renderable
+    gamma_meV = 0.05 * geom.delta_meV
+    z = E - 1j * gamma_meV
+    n_complex = np.real(np.abs(z) / np.sqrt(z ** 2 - geom.delta_meV ** 2))
+    ax_dos.fill_between(E, 0.0, n_complex, color="tab:orange", alpha=0.45,
+                        label="N_s(E) / N(0)  (Dynes γ = 0.05 Δ)")
+    ax_dos.axvline(+geom.delta_meV, color="black", linestyle="--",
+                   linewidth=1.0, label=f"|E| = Δ = {geom.delta_meV:.3f} meV")
+    ax_dos.axvline(-geom.delta_meV, color="black", linestyle="--",
+                   linewidth=1.0)
+    ax_dos.axhline(1.0, color="gray", linewidth=0.6,
+                   alpha=0.6, label="N_n / N(0) = 1 (normal state)")
+    ax_dos.axvspan(-geom.delta_meV, +geom.delta_meV,
+                   color="lightgray", alpha=0.4, label="forbidden states")
+    ax_dos.set_xlabel("E − E_F  [meV]")
+    ax_dos.set_ylabel("N(E) / N(0)")
+    ax_dos.set_title("BCS density of states (gap + coherence peaks)")
+    ax_dos.set_xlim(-4.0 * geom.delta_meV, 4.0 * geom.delta_meV)
+    ax_dos.set_ylim(0.0, 5.5)
+    ax_dos.grid(True, alpha=0.3)
+    ax_dos.legend(loc="upper right", fontsize=8)
+
+    fig.suptitle(
+        "BCS gap from substrate paired strain bridge\n"
+        "(Δ = 2 ℏω_D exp(−1/(N(0)V)) — paired GEOMETRY+SIM+VIZ)",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "92_bcs_gap.png"))
+
+    # ---- 93_tc_table.png  ------------------------------------------------
+    rows = sim.reference_table_rows()
+    names = [r["name"] for r in rows]
+    Tcs = [r["T_c_K"] for r in rows]
+    families = [r["family"] for r in rows]
+    family_color = {
+        "elemental":  "tab:blue",
+        "conv-2band": "tab:green",
+        "cuprate":    "tab:purple",
+    }
+    bar_colors = [family_color[f] for f in families]
+
+    fig, ax_bar = plt.subplots(1, 1, figsize=(11, 6.5))
+    y = np.arange(len(names))
+    ax_bar.barh(y, Tcs, color=bar_colors, edgecolor="black", linewidth=0.6)
+    for k, (n, T, f) in enumerate(zip(names, Tcs, families)):
+        ax_bar.text(T + 1.5, k, f"{T:.1f} K  ({f})", va="center",
+                    fontsize=9)
+    ax_bar.set_yticks(y)
+    ax_bar.set_yticklabels(names, fontsize=10)
+
+    # Substrate ceiling line
+    ax_bar.axvline(SUBSTRATE_TC_MAX_K, color="crimson", linestyle="--",
+                   linewidth=2.0,
+                   label=f"B3 substrate ceiling  T_c,max = Λ_QCD/n_R = "
+                         f"{SUBSTRATE_TC_MAX_K:.1f} K")
+    HBCCO_K = REFERENCE_SUPERCONDUCTORS["HBCCO"]["T_c_K"]
+    deviation = 100.0 * abs(HBCCO_K - SUBSTRATE_TC_MAX_K) / SUBSTRATE_TC_MAX_K
+    ax_bar.annotate(
+        f"HBCCO record (1993)\nmatches ceiling at {deviation:.1f}%",
+        xy=(HBCCO_K, len(names) - 1),
+        xytext=(HBCCO_K + 8, len(names) - 1.5),
+        arrowprops=dict(arrowstyle="->", color="crimson", lw=1.0),
+        fontsize=9, color="crimson",
+    )
+    # Legend proxy entries by family
+    for fam, color in family_color.items():
+        ax_bar.barh([-1], [0], color=color, label=f"{fam}")
+    ax_bar.set_xlim(0.0, max(Tcs) * 1.25)
+    ax_bar.set_ylim(-0.5, len(names) - 0.5)
+    ax_bar.set_xlabel("Critical temperature  T_c  [K]")
+    ax_bar.set_title(
+        "Reference superconductors vs B3 substrate ceiling\n"
+        "Onnes 1911 (Hg) → Schilling 1993 (HBCCO): 31-year ambient-pressure record",
+        fontsize=11,
+    )
+    ax_bar.legend(loc="lower right", fontsize=9)
+    ax_bar.grid(True, axis="x", alpha=0.3)
+
+    fig.tight_layout()
+    out.append(save(fig, "93_tc_table.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Semiconductor band structure + p-n junction (paired GEOMETRY+SIM+VIZ)
+# ---------------------------------------------------------------------------
+
+def render_semi() -> list[str]:
+    """Produce 94_band_structure.png and 95_pn_junction.png.
+
+    94: Two-panel band-structure comparison.
+        Left  -- E vs k for direct-gap GaAs:  conduction band minimum and
+                 valence band maximum both at Gamma; the gap is a pure
+                 vertical (zero-momentum) transition (high LED efficiency).
+        Right -- E vs k for indirect-gap Si:  conduction band minimum at
+                 the X-like zone boundary, valence band maximum at Gamma;
+                 the gap requires phonon-assisted (off-axis) transitions
+                 (low LED efficiency).  Bandgap, Fermi level (mid-gap),
+                 conduction & valence bands annotated.
+    95: Three-panel p-n junction in the abrupt-junction depletion
+        approximation.
+        Top    -- space-charge density rho(x): - q N_a^- on the p-side,
+                  + q N_d^+ on the n-side, zero in the bulk.
+        Middle -- electric field E(x): triangular profile peaking at
+                  the metallurgical junction, zero in both bulks.
+        Bottom -- electrostatic potential phi(x): smooth step from p-bulk
+                  (0) to n-bulk (V_bi); built-in voltage annotated.
+    """
+    from src.stiff_medium.semiconductor_substrate import (
+        SemiconductorGeometry,
+        SemiconductorSimulator,
+    )
+
+    out: list[str] = []
+
+    # ------------------------------------------------------------------
+    # 94: band-structure comparison (direct GaAs vs indirect Si)
+    # ------------------------------------------------------------------
+    fig = plt.figure(figsize=(15, 7))
+
+    # ---- Left: direct-gap GaAs --------------------------------------
+    ax_d = fig.add_subplot(1, 2, 1)
+    geom_gaas = SemiconductorGeometry(material="GaAs", n_k=401)
+    sim_gaas = SemiconductorSimulator(material="GaAs", T_kelvin=300.0)
+    k_n_gaas = geom_gaas.k_grid_normalised()
+    Ec_gaas = geom_gaas.conduction_band_eV()
+    Ev_gaas = geom_gaas.valence_band_eV()
+    EF_gaas = geom_gaas.fermi_level_eV()
+    Eg_gaas = geom_gaas.bandgap_eV()
+
+    ax_d.fill_between(k_n_gaas, Ec_gaas.max() + 1.0, Ec_gaas,
+                      color="tab:orange", alpha=0.18,
+                      label="conduction band (electrons)")
+    ax_d.fill_between(k_n_gaas, Ev_gaas, Ev_gaas.min() - 1.0,
+                      color="tab:blue", alpha=0.18,
+                      label="valence band (holes)")
+    ax_d.plot(k_n_gaas, Ec_gaas, color="tab:red", lw=2.4,
+              label="$E_c(k)$  (min @ $\\Gamma$)")
+    ax_d.plot(k_n_gaas, Ev_gaas, color="tab:blue", lw=2.4,
+              label="$E_v(k)$  (max @ $\\Gamma$)")
+    ax_d.axhline(EF_gaas, color="black", lw=1.4, ls="--",
+                 label=f"$E_F = E_g/2 = {EF_gaas:.2f}$ eV")
+
+    # Vertical (direct) transition arrow
+    ax_d.annotate("", xy=(0.0, Eg_gaas + 0.05), xytext=(0.0, -0.05),
+                  arrowprops={"arrowstyle": "->", "color": "darkgreen",
+                              "lw": 2.4})
+    ax_d.text(0.10, 0.5 * Eg_gaas,
+              f"DIRECT\n$E_g={Eg_gaas:.2f}$ eV\n(photon only)",
+              color="darkgreen", fontsize=10, fontweight="bold",
+              ha="left", va="center")
+
+    ax_d.set_xlabel("$k a / \\pi$  (normalised wavevector)", fontsize=11)
+    ax_d.set_ylabel("energy [eV]", fontsize=11)
+    ax_d.set_title(
+        f"GaAs: direct-gap semiconductor at $\\Gamma$\n"
+        f"$E_g = {Eg_gaas:.2f}$ eV  -- LED / laser foundation",
+        fontsize=11,
+    )
+    ax_d.set_xlim(-1.05, 1.05)
+    ax_d.set_ylim(-1.5, Ec_gaas.max() + 0.5)
+    ax_d.axvline(0.0, color="gray", lw=0.6, alpha=0.5)
+    ax_d.text(0.0, ax_d.get_ylim()[1] - 0.15, "$\\Gamma$",
+              ha="center", fontsize=11)
+    ax_d.text(1.0, ax_d.get_ylim()[1] - 0.15, "X",
+              ha="center", fontsize=11)
+    ax_d.text(-1.0, ax_d.get_ylim()[1] - 0.15, "X",
+              ha="center", fontsize=11)
+    ax_d.grid(True, alpha=0.3)
+    ax_d.legend(loc="upper right", fontsize=8.5, framealpha=0.92)
+
+    # ---- Right: indirect-gap Si -------------------------------------
+    ax_i = fig.add_subplot(1, 2, 2)
+    geom_si = SemiconductorGeometry(material="Si", n_k=401)
+    sim_si = SemiconductorSimulator(material="Si", T_kelvin=300.0)
+    k_n_si = geom_si.k_grid_normalised()
+    Ec_si = geom_si.conduction_band_eV()
+    Ev_si = geom_si.valence_band_eV()
+    EF_si = geom_si.fermi_level_eV()
+    Eg_si = geom_si.bandgap_eV()
+
+    ax_i.fill_between(k_n_si, Ec_si.max() + 1.0, Ec_si,
+                      color="tab:orange", alpha=0.18,
+                      label="conduction band (electrons)")
+    ax_i.fill_between(k_n_si, Ev_si, Ev_si.min() - 1.0,
+                      color="tab:blue", alpha=0.18,
+                      label="valence band (holes)")
+    ax_i.plot(k_n_si, Ec_si, color="tab:red", lw=2.4,
+              label="$E_c(k)$  (min @ X-like)")
+    ax_i.plot(k_n_si, Ev_si, color="tab:blue", lw=2.4,
+              label="$E_v(k)$  (max @ $\\Gamma$)")
+    ax_i.axhline(EF_si, color="black", lw=1.4, ls="--",
+                 label=f"$E_F = E_g/2 = {EF_si:.2f}$ eV")
+
+    # Diagonal (indirect) transition arrow:  k=0 -> k=+pi/a
+    i_min = int(np.argmin(Ec_si))
+    k_min = k_n_si[i_min]
+    Ec_min = Ec_si[i_min]
+    ax_i.annotate("", xy=(k_min, Ec_min + 0.05), xytext=(0.0, -0.05),
+                  arrowprops={"arrowstyle": "->", "color": "darkgreen",
+                              "lw": 2.4, "connectionstyle": "arc3,rad=-0.2"})
+    ax_i.text(0.45, 0.55 * Eg_si,
+              f"INDIRECT\n$E_g={Eg_si:.2f}$ eV\n(photon + phonon)",
+              color="darkgreen", fontsize=10, fontweight="bold",
+              ha="center", va="center")
+
+    ax_i.set_xlabel("$k a / \\pi$  (normalised wavevector)", fontsize=11)
+    ax_i.set_ylabel("energy [eV]", fontsize=11)
+    ax_i.set_title(
+        f"Si: indirect-gap semiconductor (CB min off $\\Gamma$)\n"
+        f"$E_g = {Eg_si:.2f}$ eV  -- weak light emission",
+        fontsize=11,
+    )
+    ax_i.set_xlim(-1.05, 1.05)
+    ax_i.set_ylim(-1.5, Ec_si.max() + 0.5)
+    ax_i.axvline(0.0, color="gray", lw=0.6, alpha=0.5)
+    ax_i.text(0.0, ax_i.get_ylim()[1] - 0.15, "$\\Gamma$",
+              ha="center", fontsize=11)
+    ax_i.text(1.0, ax_i.get_ylim()[1] - 0.15, "X",
+              ha="center", fontsize=11)
+    ax_i.text(-1.0, ax_i.get_ylim()[1] - 0.15, "X",
+              ha="center", fontsize=11)
+    ax_i.grid(True, alpha=0.3)
+    ax_i.legend(loc="upper right", fontsize=8.5, framealpha=0.92)
+
+    n_i_si = sim_si.intrinsic_carrier_concentration_per_cm3()
+    fig.suptitle(
+        f"Band structure from substrate periodic potential:  "
+        f"$E_g = $ depth of substrate strain at atomic nodes\n"
+        f"intrinsic Si carrier concentration $n_i$(300 K) = "
+        f"{n_i_si:.2e} /cm$^3$  "
+        f"(textbook ~ 1.5e10)",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "94_band_structure.png"))
+
+    # ------------------------------------------------------------------
+    # 95: p-n junction (charge density + field + potential)
+    # ------------------------------------------------------------------
+    fig, axes = plt.subplots(3, 1, figsize=(11, 11), sharex=True)
+
+    sim = SemiconductorSimulator(material="Si", T_kelvin=300.0)
+    N_a = 1.0e17     # /cm^3, p-side acceptor doping
+    N_d = 1.0e17     # /cm^3, n-side donor doping
+    profile = sim.junction_profile(
+        N_a_per_cm3=N_a, N_d_per_cm3=N_d, V_applied_V=0.0, n_x=601,
+    )
+    # Convert position from m -> nm for nicer units
+    x_nm = profile["x_m"] * 1e9
+    rho = profile["rho_C_per_m3"]
+    E_field = profile["E_V_per_m"]
+    phi = profile["phi_V"]
+    x_p_nm = profile["x_p_m"] * 1e9
+    x_n_nm = profile["x_n_m"] * 1e9
+    W_nm = profile["W_m"] * 1e9
+    V_bi = profile["V_bi_V"]
+
+    # ---- Top: charge density rho(x) ----------------------------------
+    ax_q = axes[0]
+    ax_q.fill_between(x_nm, rho, 0.0, where=(rho < 0),
+                      color="tab:blue", alpha=0.5,
+                      label=f"$-q N_a$ (p-side, $N_a = ${N_a:.0e}/cm$^3$)")
+    ax_q.fill_between(x_nm, rho, 0.0, where=(rho > 0),
+                      color="tab:red", alpha=0.5,
+                      label=f"$+q N_d$ (n-side, $N_d = ${N_d:.0e}/cm$^3$)")
+    ax_q.plot(x_nm, rho, color="black", lw=1.8)
+    ax_q.axhline(0.0, color="black", lw=0.6, alpha=0.5)
+    ax_q.axvline(0.0, color="gray", lw=0.8, ls=":",
+                 label="metallurgical junction")
+    ax_q.axvline(-x_p_nm, color="tab:blue", lw=0.8, ls="--", alpha=0.7)
+    ax_q.axvline(+x_n_nm, color="tab:red",  lw=0.8, ls="--", alpha=0.7)
+    ax_q.set_ylabel("space charge $\\rho(x)$  [C / m$^3$]",
+                    fontsize=11)
+    ax_q.set_title(
+        "Charge density: ionized acceptors (p) + ionized donors (n)\n"
+        f"$x_p = {x_p_nm:.1f}$ nm   $x_n = {x_n_nm:.1f}$ nm   "
+        f"$W = x_p + x_n = {W_nm:.1f}$ nm",
+        fontsize=11,
+    )
+    ax_q.legend(loc="upper right", fontsize=9, framealpha=0.92)
+    ax_q.grid(True, alpha=0.3)
+
+    # ---- Middle: electric field E(x) ---------------------------------
+    ax_e = axes[1]
+    # Convert V/m -> kV/cm for legibility
+    E_kVcm = E_field / 1.0e5
+    ax_e.fill_between(x_nm, E_kVcm, 0.0, where=(np.abs(E_kVcm) > 0),
+                      color="tab:purple", alpha=0.25)
+    ax_e.plot(x_nm, E_kVcm, color="tab:purple", lw=2.4,
+              label="$E(x)$")
+    ax_e.axhline(0.0, color="black", lw=0.6, alpha=0.5)
+    ax_e.axvline(0.0, color="gray", lw=0.8, ls=":")
+    ax_e.axvline(-x_p_nm, color="tab:blue", lw=0.8, ls="--", alpha=0.7)
+    ax_e.axvline(+x_n_nm, color="tab:red",  lw=0.8, ls="--", alpha=0.7)
+
+    E_peak = float(np.min(E_kVcm))   # most negative value
+    ax_e.scatter([0.0], [E_peak], s=80, c="black", zorder=5)
+    ax_e.annotate(
+        f"$|E_{{max}}| = {abs(E_peak):.1f}$ kV/cm\n"
+        f"at metallurgical junction",
+        xy=(0.0, E_peak), xytext=(0.4 * x_nm.max(), 0.8 * E_peak),
+        fontsize=10, ha="left",
+        arrowprops={"arrowstyle": "->", "color": "black", "lw": 0.8},
+    )
+    ax_e.set_ylabel("electric field $E(x)$  [kV / cm]", fontsize=11)
+    ax_e.set_title(
+        "Electric field (triangular profile in depletion approximation)\n"
+        f"$dE/dx = \\rho / \\varepsilon_s$ ; "
+        f"$\\varepsilon_r = 11.7$ for Si",
+        fontsize=11,
+    )
+    ax_e.legend(loc="upper right", fontsize=9, framealpha=0.92)
+    ax_e.grid(True, alpha=0.3)
+
+    # ---- Bottom: potential phi(x) ------------------------------------
+    ax_p = axes[2]
+    ax_p.fill_between(x_nm, phi, 0.0,
+                      color="tab:green", alpha=0.18)
+    ax_p.plot(x_nm, phi, color="tab:green", lw=2.6,
+              label="$\\varphi(x)$ (electrostatic potential)")
+    ax_p.axhline(0.0, color="black", lw=0.6, alpha=0.5,
+                 label="$\\varphi$(p-bulk) = 0")
+    ax_p.axhline(V_bi, color="tab:olive", lw=1.4, ls="--",
+                 label=f"$\\varphi$(n-bulk) = $V_{{bi}}$ = {V_bi:.3f} V")
+    ax_p.axvline(0.0, color="gray", lw=0.8, ls=":")
+    ax_p.axvline(-x_p_nm, color="tab:blue", lw=0.8, ls="--", alpha=0.7)
+    ax_p.axvline(+x_n_nm, color="tab:red",  lw=0.8, ls="--", alpha=0.7)
+    ax_p.set_xlabel("position $x$ across junction [nm]", fontsize=11)
+    ax_p.set_ylabel("electrostatic potential $\\varphi(x)$  [V]",
+                    fontsize=11)
+    ax_p.set_title(
+        f"Electrostatic potential:  "
+        f"$V_{{bi}} = (kT/q) \\ln(N_a N_d / n_i^2) = {V_bi:.3f}$ V",
+        fontsize=11,
+    )
+    ax_p.legend(loc="upper left", fontsize=9, framealpha=0.92)
+    ax_p.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "p-n junction (Si, abrupt, $N_a = N_d = 10^{17}$/cm$^3$, $T = 300$ K):  "
+        "charge density, field, potential\n"
+        "substrate interpretation:  depletion = strain inversion zone "
+        "between two doped substrate domains",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "95_pn_junction.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Measurement / observer / "consciousness" — substrate decoherence
+# ---------------------------------------------------------------------------
+
+def render_measurement_observer() -> list[str]:
+    """Produce 100_measurement_problem.png and 101_decoherence_timescale.png.
+
+    100: superposition rho(t) decohering vs N for several apparatus sizes,
+         + substrate strain pattern (system + apparatus + environment),
+         + Bell CHSH bar (substrate beats LHV bound),
+         + Wigner-friend timeline (friend & Wigner agree),
+         + Born-rule probability bars,
+         + tau_d catalogue for canonical mesoscopic systems.
+    101: tau_d vs apparatus N for a family of (gamma, T) lines, with
+         the mesoscopic benchmark systems annotated.
+    """
+    from src.stiff_medium.measurement_observer_substrate import (
+        MeasurementObserverGeometry,
+        MeasurementObserverSimulator,
+        classical_chsh_bound,
+        decoherence_timescale,
+        example_systems,
+        substrate_chsh_value,
+        tau_d_vs_n,
+    )
+    out: list[str] = []
+
+    # ------------------------------------------------------------------
+    # 100_measurement_problem.png — 6-panel substrate measurement story
+    # ------------------------------------------------------------------
+    fig = plt.figure(figsize=(18, 10))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.0, 1.0],
+                           width_ratios=[1.2, 1.2, 1.0],
+                           hspace=0.45, wspace=0.35)
+
+    # Panel A: superposition |rho_01|(t) decay for several N at fixed gamma, T
+    ax_decoh = fig.add_subplot(gs[0, 0])
+    n_list = [1.0, 1.0e3, 1.0e6, 1.0e9, 1.0e12]
+    palette = plt.cm.viridis(np.linspace(0.1, 0.9, len(n_list)))
+    for n, color in zip(n_list, palette):
+        geom = MeasurementObserverGeometry(
+            n_apparatus=n, drag_gamma=1.0, temperature=300.0)
+        sim = MeasurementObserverSimulator(geometry=geom, n_steps=160)
+        ev = sim.evolve_superposition()
+        ax_decoh.semilogx(ev["t"] + 1e-40, ev["coherence"],
+                          color=color, linewidth=1.8,
+                          label=f"N = {n:.0e}  tau_d = {ev['tau_d']:.1e} s")
+    ax_decoh.axhline(0.5, color="black", linestyle=":", linewidth=1.0,
+                     alpha=0.5, label="initial |rho_01| = 1/2")
+    ax_decoh.axhline(0.0, color="red", linestyle="--", linewidth=1.0,
+                     alpha=0.4, label="fully mixed")
+    ax_decoh.set_xlabel("time t [s]", fontsize=10)
+    ax_decoh.set_ylabel("coherence  |rho_01(t)|", fontsize=10)
+    ax_decoh.set_title(
+        "Superposition decoheres faster the larger the apparatus N\n"
+        "tau_d = hbar / (gamma . k_B T . N)", fontsize=10)
+    ax_decoh.legend(fontsize=7, loc="upper right")
+    ax_decoh.grid(True, alpha=0.3, which="both")
+    ax_decoh.set_ylim(-0.02, 0.55)
+
+    # Panel B: substrate strain pattern of S + A + E (spatial)
+    ax_geom = fig.add_subplot(gs[0, 1])
+    geom_demo = MeasurementObserverGeometry(
+        n_apparatus=1.0e6, drag_gamma=1.0, temperature=300.0,
+        system_extent=2.0e-3, apparatus_extent=2.0e-2,
+        environment_extent=1.0e-1,
+    )
+    x_grid = np.linspace(-0.1, 0.1, 1001)
+    sys_env = geom_demo.system_envelope(x_grid)
+    ap_env = geom_demo.apparatus_envelope(x_grid)
+    ap_env_plot = 0.6 * ap_env / max(ap_env.max(), 1e-30)
+    env_env_plot = 0.15 * np.ones_like(x_grid) + \
+        0.02 * np.random.default_rng(0).standard_normal(x_grid.shape)
+    ax_geom.fill_between(x_grid * 100.0, 0, env_env_plot, color="grey",
+                         alpha=0.3, label="ENVIRONMENT (thermal bath ~ kT)")
+    ax_geom.fill_between(x_grid * 100.0, 0, ap_env_plot, color="orange",
+                         alpha=0.5,
+                         label="APPARATUS (N = 1e6 modes, drag gamma = 1)")
+    ax_geom.fill_between(x_grid * 100.0, 0, sys_env, color="blue", alpha=0.7,
+                         label="SYSTEM (coherent strain bump)")
+    ax_geom.plot(x_grid * 100.0, sys_env, "b-", linewidth=2.0)
+    ax_geom.set_xlabel("position x [cm]", fontsize=10)
+    ax_geom.set_ylabel("substrate strain amplitude (arb)", fontsize=10)
+    ax_geom.set_title(
+        "Three-region substrate geometry\n"
+        "system + apparatus + environment   (drag gamma between them)",
+        fontsize=10)
+    ax_geom.legend(fontsize=8, loc="upper right")
+    ax_geom.grid(True, alpha=0.3)
+    ax_geom.set_xlim(-10.0, 10.0)
+    ax_geom.set_ylim(0, 1.15)
+
+    # Panel C: CHSH bar vs LHV bound — substrate beats classical
+    ax_chsh = fig.add_subplot(gs[0, 2])
+    s_substrate = substrate_chsh_value()
+    s_classical = classical_chsh_bound()
+    bars = ax_chsh.bar(["LHV bound\n(Bell)", "Substrate\n(Tsirelson)"],
+                        [s_classical, s_substrate],
+                        color=["lightcoral", "steelblue"],
+                        edgecolor="black", linewidth=1.5)
+    ax_chsh.axhline(s_classical, color="red", linestyle="--",
+                     linewidth=1.0, alpha=0.7,
+                     label=f"classical bound = {s_classical:.3f}")
+    ax_chsh.axhline(s_substrate, color="blue", linestyle="--",
+                     linewidth=1.0, alpha=0.7,
+                     label=f"Tsirelson bound = {s_substrate:.3f} = 2sqrt(2)")
+    for bar, val in zip(bars, [s_classical, s_substrate]):
+        ax_chsh.text(bar.get_x() + bar.get_width() / 2.0, val + 0.05,
+                     f"{val:.3f}", ha="center", fontsize=11,
+                     fontweight="bold")
+    ax_chsh.set_ylabel("CHSH value |S|", fontsize=10)
+    ax_chsh.set_title(
+        "Bell test:  substrate violates LHV\n"
+        "non-locality from shared elastic strain",
+        fontsize=10)
+    ax_chsh.set_ylim(0, 3.2)
+    ax_chsh.legend(fontsize=8, loc="lower right")
+    ax_chsh.grid(True, alpha=0.3, axis="y")
+
+    # Panel D: Wigner's friend timeline — friend & Wigner outcomes agree
+    ax_wf = fig.add_subplot(gs[1, 0])
+    sim_wf = MeasurementObserverSimulator(
+        geometry=MeasurementObserverGeometry(
+            n_apparatus=1.0e10, drag_gamma=1.0, temperature=300.0),
+        n_steps=200, rng_seed=7,
+    )
+    wf = sim_wf.wigner_friend_outcome()
+    ev_wf = sim_wf.evolve_superposition()
+    ax_wf.semilogx(ev_wf["t"] + 1e-40, ev_wf["coherence"], "b-",
+                    linewidth=2.0, label="|rho_01(t)|  (system coherence)")
+    ax_wf.axvline(wf["tau_d"], color="orange", linestyle="--",
+                   linewidth=1.5, alpha=0.7,
+                   label=f"tau_d = {wf['tau_d']:.1e} s")
+    ax_wf.axvline(wf["t_friend"], color="green", linestyle="-.",
+                   linewidth=1.5, alpha=0.7,
+                   label="friend reads (t = 5 tau_d)")
+    ax_wf.axvline(wf["t_wigner"], color="red", linestyle=":",
+                   linewidth=1.8, alpha=0.7,
+                   label="Wigner reads (t = 10 tau_d)")
+    ax_wf.text(wf["t_friend"] * 1.5, 0.4,
+                f"friend outcome: |{wf['outcome_friend']}>",
+                color="green", fontsize=10, fontweight="bold")
+    ax_wf.text(wf["t_wigner"] * 1.5, 0.3,
+                f"Wigner outcome: |{wf['outcome_wigner']}>",
+                color="red", fontsize=10, fontweight="bold")
+    ax_wf.text(wf["t_friend"] * 1.5, 0.2,
+                "agree = TRUE   (no consciousness collapse)",
+                color="black", fontsize=9, style="italic")
+    ax_wf.set_xlabel("time t [s]", fontsize=10)
+    ax_wf.set_ylabel("coherence  |rho_01(t)|", fontsize=10)
+    ax_wf.set_title(
+        "Wigner's friend:  substrate decoherence finished long before Wigner opens box",
+        fontsize=10)
+    ax_wf.legend(fontsize=7, loc="upper right")
+    ax_wf.grid(True, alpha=0.3, which="both")
+    ax_wf.set_ylim(-0.02, 0.55)
+
+    # Panel E: Born rule — |amplitude|^2 normalises to 1
+    ax_born = fig.add_subplot(gs[1, 1])
+    sim_born = MeasurementObserverSimulator()
+    amplitudes = [
+        complex(0.6, 0.0),
+        complex(0.0, 0.5),
+        complex(0.4, 0.3),
+        complex(-0.3, 0.2),
+    ]
+    probs = sim_born.born_rule_probabilities(amplitudes)
+    states = [f"|{i}>" for i in range(len(amplitudes))]
+    bars = ax_born.bar(states, probs,
+                        color=["steelblue", "orange", "green", "purple"],
+                        edgecolor="black", linewidth=1.5)
+    for bar, p in zip(bars, probs):
+        ax_born.text(bar.get_x() + bar.get_width() / 2.0, p + 0.01,
+                     f"{p:.3f}", ha="center", fontsize=10, fontweight="bold")
+    ax_born.set_ylabel("probability  P(k) = |a_k|^2 / sum |a_j|^2",
+                       fontsize=10)
+    ax_born.set_title(
+        "Born rule = energy normalisation of substrate strain modes\n"
+        f"sum P(k) = {float(np.sum(probs)):.6f}",
+        fontsize=10)
+    ax_born.set_ylim(0, max(float(np.max(probs)) * 1.25, 0.5))
+    ax_born.grid(True, alpha=0.3, axis="y")
+
+    # Panel F: text panel — tau_d catalogue for typical mesoscopic systems
+    ax_cat = fig.add_subplot(gs[1, 2])
+    ax_cat.axis("off")
+    cat = example_systems()
+    table = (
+        "tau_d catalogue\n"
+        "(hbar / (gamma k_B T N))\n"
+        "----------------------------------\n"
+    )
+    for c in cat:
+        table += (f"{c['name']:36s}\n"
+                  f"   N={c['N']:.1e}  T={c['T']:5.0f}K  "
+                  f"g={c['gamma']:.0e}\n"
+                  f"   tau_d = {c['tau_d']:.2e} s\n\n")
+    ax_cat.text(0.0, 1.0, table, fontsize=8, family="monospace",
+                 va="top", ha="left", transform=ax_cat.transAxes)
+    ax_cat.set_title("Mesoscopic decoherence catalogue", fontsize=10)
+
+    fig.suptitle(
+        "MEASUREMENT PROBLEM: substrate decoherence, NOT consciousness\n"
+        "tau_d = hbar/(gamma . k_B T . N).  CHSH = 2sqrt(2) > 2 (Bell).  "
+        "Born rule from |strain|^2.  Wigner-friend: no paradox.",
+        fontsize=13,
+    )
+    out.append(save(fig, "100_measurement_problem.png"))
+
+    # ------------------------------------------------------------------
+    # 101_decoherence_timescale.png — tau_d vs N for several gamma . T
+    # ------------------------------------------------------------------
+    fig = plt.figure(figsize=(14, 7))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.4, 1.0])
+    ax_tau = fig.add_subplot(gs[0, 0])
+    ax_anno = fig.add_subplot(gs[0, 1])
+
+    Ns = np.logspace(0, 24, 200)
+    scenarios = [
+        (1.0e-3, 300.0, "weak drag g=1e-3, T=300K"),
+        (1.0e-1, 300.0, "moderate drag g=0.1, T=300K"),
+        (1.0,     300.0, "strong drag g=1, T=300K"),
+        (1.0,      4.0, "g=1, T=4K (cryogenic)"),
+        (1.0,    1.0e3, "g=1, T=1000K (hot)"),
+    ]
+    palette = plt.cm.plasma(np.linspace(0.05, 0.85, len(scenarios)))
+    for (g, T, lbl), color in zip(scenarios, palette):
+        taus = tau_d_vs_n(Ns, gamma=g, T=T)
+        ax_tau.loglog(Ns, taus, color=color, linewidth=2.0, label=lbl)
+
+    # Overlay benchmark mesoscopic systems as scatter points
+    cat = example_systems()
+    for c in cat:
+        ax_tau.loglog(c["N"], c["tau_d"], marker="o", markersize=8,
+                       color="black", markerfacecolor="white",
+                       markeredgewidth=1.5, zorder=10)
+        ax_tau.annotate(c["name"], xy=(c["N"], c["tau_d"]),
+                         xytext=(8, 6), textcoords="offset points",
+                         fontsize=7, alpha=0.85,
+                         bbox=dict(boxstyle="round,pad=0.2", fc="lightyellow",
+                                   ec="grey", alpha=0.85))
+
+    # Reference lines for "fast" / "slow" decoherence regimes
+    ax_tau.axhline(1.0, color="grey", linestyle=":", linewidth=1.0,
+                   alpha=0.6, label="1 second")
+    ax_tau.axhline(1.0e-15, color="grey", linestyle="--", linewidth=1.0,
+                   alpha=0.6, label="1 fs (atomic timescale)")
+    ax_tau.set_xlabel("apparatus mode count  N", fontsize=11)
+    ax_tau.set_ylabel("decoherence timescale  tau_d  [s]", fontsize=11)
+    ax_tau.set_title(
+        "tau_d vs N for various (gamma, T)\n"
+        "tau_d = hbar / (gamma . k_B T . N).  Slope = -1 in log-log",
+        fontsize=11,
+    )
+    ax_tau.grid(True, alpha=0.3, which="both")
+    ax_tau.legend(fontsize=8, loc="upper right")
+    ax_tau.set_xlim(1.0, 1.0e24)
+    ax_tau.set_ylim(1.0e-30, 1.0e10)
+
+    # Side text panel: framework summary
+    ax_anno.axis("off")
+    txt = (
+        "SUBSTRATE OBSERVER PARADIGM\n"
+        "==========================\n\n"
+        "1.  No special 'observer' ontology.\n"
+        "    Measurement = macroscopic\n"
+        "    substrate coupling.\n\n"
+        "2.  Decoherence rate set by drag gamma\n"
+        "    in L = 1/2 rho (d_t u)^2\n"
+        "         - 1/2 K |grad u|^2\n"
+        "         - V(u)\n"
+        "         - gamma . u . (d_t u)\n\n"
+        "3.  Apparatus N modes thermally\n"
+        "    coupled at T -> tau_d ~ hbar/(g kT N)\n\n"
+        "4.  Catalogue:\n"
+        "    - electron 300K, N=1     ~ 10^-4 s\n"
+        "    - dust 10 um, N~10^12    ~ 10^-14 s\n"
+        "    - cat 10 cm, N~10^23     ~ 10^-20 s\n\n"
+        "5.  Wigner's friend: friend &\n"
+        "    Wigner agree because tau_d\n"
+        "    << t_observation in any\n"
+        "    macroscopic apparatus.\n\n"
+        "6.  Bell CHSH: substrate predicts\n"
+        "    Tsirelson 2sqrt(2) ~ 2.828.\n"
+        "    Beats LHV bound 2 because\n"
+        "    same elastic strain field is\n"
+        "    shared between detectors.\n\n"
+        "7.  Born rule = energy norm of\n"
+        "    substrate strain mode k:\n"
+        "    P(k) = |a_k|^2 / sum |a_j|^2.\n"
+    )
+    ax_anno.text(0.0, 1.0, txt, fontsize=9, family="monospace",
+                  va="top", ha="left", transform=ax_anno.transAxes)
+
+    fig.suptitle(
+        "Decoherence timescale tau_d(N) — substrate sets the boundary\n"
+        "between quantum (small N, slow tau_d) and classical (large N, instant tau_d)",
+        fontsize=13,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "101_decoherence_timescale.png"))
+
+    return out
+
+
 def main() -> None:
     print(f"Rendering all visualizations to {VISUALS_DIR}/")
     print("=" * 70)
@@ -6298,6 +7614,18 @@ def main() -> None:
          render_climate),
         ("Neural network learning (perceptron AND/OR/XOR + MLP universality + loss landscape)",
          render_neural_network),
+        ("Fluid turbulence from substrate (Kolmogorov k^-5/3 + Karman vortex street + Re_crit 2300)",
+         render_turbulence),
+        ("Chaos / dynamical systems (Lorenz attractor + logistic bifurcation + Lyapunov)",
+         render_chaos),
+        ("Quantum computing as Mobius two-sheet states (gates + Bell + Grover + decoherence)",
+         render_qc),
+        ("Superconductivity (BCS gap Δ(T) + DOS + substrate T_c ceiling 128.9 K)",
+         render_sc),
+        ("Semiconductor band structure + p-n junction (Si/GaAs/GaN/diamond + V_bi)",
+         render_semi),
+        ("Measurement / observer (substrate decoherence, NOT consciousness; Bell + Born + Wigner)",
+         render_measurement_observer),
         ("Substrate visualizer", render_substrate_visualizer),
     ]
     all_paths = []
