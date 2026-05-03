@@ -1,214 +1,219 @@
-# Stiff-Medium Confinement Theory — Working Repository
+# The Stiff Medium Model
 
-Theoretical-physics work on a substrate-mechanical model of particles, atoms, and forces. The substrate is a 3D stiff elastic medium; particles are localized strain patterns; forces are medium back-reaction; spin-½ is half-integer (Möbius) winding of the strain. The repository contains the spec, simulation, tests, and analytical derivations as they evolve.
+A working substrate-mechanical framework built on a single 3D elastic medium. Stable matter, electromagnetism, gravity, particle physics, and cosmology are treated as patterns of one medium, with several sectors already quantitative and several still open.
 
-**Spec:** [`docs/superpowers/specs/2026-04-29-stiff-medium-theory-design.md`](docs/superpowers/specs/2026-04-29-stiff-medium-theory-design.md) (see §17 Derivation Status for what's derived vs. posited).
+**Read first:** [`MODEL.md`](MODEL.md) — the unified theory in a single document.
 
-## Quick status
+**Full spec:** [`docs/superpowers/specs/2026-04-29-stiff-medium-theory-design.md`](docs/superpowers/specs/2026-04-29-stiff-medium-theory-design.md) — derivations, tests, successes, boundary results, and the current weak-sector stress tests through §18.95.
 
-| | Status |
-|---|---|
-| Tests | 57 passing |
-| Simulation modules | 7 (neutrino, dynamics, three_d, back_reaction, mobius_dynamics, atomic, spinor) |
-| Empirically demonstrated | back-reaction binding (5.62 orbits), Pauli-via-Möbius (same-twist diverges, opposite-twist binds), hydrogen isotope shifts (D/H = +272 ppm, T/H = +363 ppm matching real measurements) |
-| Foundation gaps remaining | 45° rule (hand-waved), ξ length scale (posited), bi-pyramid type (unspecified), Möbius topology origin (implemented not derived) |
+---
 
-For the full derivation-status audit, see spec §17.
+## The encompassing Lagrangian
 
-## What this is
+The current candidate unifying expression (§18.45):
 
-## Setup
 ```
+ℒ = ½ρ(∂_t φ)² − ½K|∇φ|² − V(φ)              [substrate]
+  + ψ̄(iℏγ^μ(∂_μ + ieA_μ) − g_Y φ)ψ           [fermion + EM + Yukawa]
+  − ¼ F_μν F^μν                              [bundle]
+  + λ(x)[(∂_zφ)² − |∇_⊥φ|²]                 [45° cone]
+```
+
+with `V(φ) = (K/ξ²)(1 − cos(φ/ξ))/√(1 − (φ/φ_max)²) − ε_0` and Möbius half-flux topology.
+
+The current compact-geometric candidate (§18.84) rewrites the cone multiplier as substrate null geometry and folds the dark sector into a symmetric-traceless neutral-stress term:
+
+```
+ℒ_geo = ½ρ(D_tφ)² − ½K g_cone^ij D_iφ D_jφ − V(φ)
+      + ψ̄(iℏγ^a e_a^μD_μ − g_Yφ)ψ − ¼F_A²
+      − ½Kα² Tr(ST(strain)²)
+```
+
+with `D = d + ieA_EM + iA_Möbius`. This is a candidate simplification, not a completed derivation.
+
+**10-20 working parameters**, depending on how many effective-sector terms are counted (vs ~30 in SM + ΛCDM + GR). The goal is to derive the observed sectors from this substrate structure; flavour mixing, Planck-scale closure, and precision cosmology remain active gaps.
+
+See `scripts/encompassing_lagrangian.py` for structure visualization.
+
+## Status
+
+The strongest benchmark checks are in atomic physics, QED inheritance, gravity/EM hierarchy, strong-field GR limits, and QCD-scale mechanics. Later sections also document failures and boundaries, especially in lepton hierarchy, CKM/flavour mixing, Planck-scale UV closure, and one-shot Big-Bang baryogenesis.
+
+| Domain | Representative checks | Best agreement |
+|---|---|---|
+| Atomic / chemistry | 8 core checks | Hydrogen E_1s exact |
+| Universal physics | 5 core checks | Gravity/EM ratio 0.06% |
+| Strong-field GR | 5 benchmark checks | Mercury precession <1% |
+| Particle physics / QED | 8 benchmark checks | Michel parameters 0.01% |
+| QCD-scale mechanics | growing set | f_π, f_K, proton radius, magnetic moments |
+| Open/boundary sectors | active gaps | CKM, lepton hierarchy, Planck scale, CMB/Hubble |
+
+The compression claim is now treated as provisional: the substrate core is compact, but open sectors must be closed without adding ad-hoc parameters.
+
+---
+
+## What's in this repo
+
+```
+MODEL.md          ← Unified theory document (start here)
+docs/             ← Full spec with derivations, verifications, history
+src/stiff_medium/ ← Core simulation modules
+scripts/          ← Demonstration & verification scripts
+tests/            ← Unit tests for core modules
+```
+
+### Core simulation modules (`src/stiff_medium/`)
+
+- `neutrino.py`, `three_d.py`: 45° cone propagation primitive
+- `dynamics.py`: time evolution
+- `back_reaction.py`: medium response forces
+- `mobius_dynamics.py`: half-flux topology / spin-½
+- `atomic.py`: multi-electron N-body Coulomb + Pauli + EM damping
+- `spinor.py`: Möbius spinor structure
+- `em_field.py`, `em_field_3d.py`: EM wave propagation (1D, 3D)
+- `detector.py`: bound-state tracking
+- `visualize.py`: matplotlib animation
+
+### Key demonstration scripts
+
+**Atomic physics:**
+- `helium_variational.py` — variational He, Li⁺, Be²⁺ ground states
+- `hartree_radial.py` — Madelung 4s/3d ordering for K
+- `madelung_rule.py` — Slater rules across periodic table
+- `magnesium_screened.py` — heavy atom (Z=12) with orbital screening
+- `h2_lcao.py` — H₂ molecular bonding via LCAO-MO
+- `atomic_emission_spectroscopy.py` — Lyman-α and emission lines
+
+**Universal physics:**
+- `mass_energy_equivalence.py` — E = mc² as kinematic identity
+- `gravity_static_deflection.py` — 1/r² law from substrate Poisson
+- `g_from_substrate.py` — gravity/EM hierarchy at 0.06%
+- `cone_bouncing_mass.py` — §18.35 cone-bouncing mass mechanism
+
+**Strong-field GR:**
+- `strong_field_gravity.py` — light bending, Mercury precession, GPS, Pound-Rebka, BH horizon
+
+**Particle physics:**
+- `lepton_dirac_solver.py` — single-kink Dirac spectrum
+- `multi_kink_dirac.py` — multi-kink configurations
+- `lepton_koide_in_model.py` — Koide relation in our model
+- `muon_decay_spectrum.py` — Michel spectrum, V-A coupling
+- `precision_qed_tests.py` — tau lifetime, electron g-2, Lamb shift, 21cm
+
+**Cosmology:**
+- `cosmology_numerical.py` — dark matter, dark energy, BH formation, inflation
+- `cyclic_cosmology_timescales.py` — end-state cycle lengths
+- `cmb_phase_transition.py` — CMB as substrate de-saturation
+
+**Audit / gap tests:**
+- `alpha_audit.py`, `tests/test_alpha_audit.py` — canonical fine-structure constant audit; current conclusion is no derivation yet, with the best fixed two-loop scan point low by `0.528795527` in inverse-alpha (`0.385880739%`) vs CODATA 2022
+- `dependency_ledger_report.py` — dependency/status ledger for model claims
+- `missing_piece_hypotheses_report.py` — weak-sector hypothesis tests for UV, leptons, CKM, cosmology transfer, dark matter, and matter orientation
+- `mechanism_trials_report.py` — concrete mechanism trials for the current weak sectors
+- `substrate_polarization_dm_test.py` — strict no-DM/pure-polarization boundary test
+- `dark_stress_hybrid_test.py` — neutral-kink / substrate-polarization hybrid dark-stress test
+- `dark_stress_parameter_closure_test.py` — dark-stress abundance, mobile fraction, memory, and halo-radius closure candidates
+- `dark_stress_memory_clock_test.py` — polarization-memory clock trials
+- `dark_stress_scale_closure_test.py` — derives the kpc coherence clock from `α³(c/H0)/√3` and `αc/√5`
+- `dark_stress_factor_scan_test.py` — checks whether the dark-scale factors are unique or numerological
+- `dark_stress_cluster_dynamics_test.py` — cluster lensing split, memory offset, and dark-stress causal-horizon audit
+- `neutral_stress_tensor_modes_test.py` — symmetric-traceless stress projector and `√5` dark-speed mode count
+- `dark_stress_transport_test.py` — finite-speed 1D mobile-kink / locked-polarization transport profile
+- `neutral_coupling_suppression_test.py` — narrows `α` dark-speed suppression to `K_eff/K = α²`
+- `dark_stress_em_darkness_test.py` — operational EM-darkness gate: no emission, absorption, or reflection channel
+- `geometric_action_compaction_test.py` — compact candidate action with cone metric, Möbius connection, and neutral stress
+- `cone_variational_origin_test.py` — equal-partition elastic penalty selecting the 45° cone
+- `cone_lattice_microgeometry_test.py` — lattice-invariant audit showing the cone quartic requires self-dual exchange
+- `cone_self_dual_exchange_test.py` — paired dual-branch mechanism for cancelling cone bias conditionally
+- `cone_detailed_balance_test.py` — local detailed-balance route to exact 50/50 dual-branch weights
+- `cone_swap_generator_origin_test.py` — elastic-cell automorphism route to the swap-degenerate cone generator
+- `cone_diamond_cell_geometry_test.py` — saturated diamond spring-cell candidate for the branch-swap automorphism
+- `cone_diamond_cell_selection_test.py` — minimal graph audit for when the diamond cell is uniquely selected
+- `cone_anchor_induced_exchange_test.py` — Schur-complement route from shared finite anchors to effective L-T exchange
+- `cone_two_anchor_origin_test.py` — phase-slip endpoint neutrality route to paired finite anchors
+- `cone_phase_slip_lattice_test.py` — discrete lattice phase-slip segment and stiffness-ratio robustness audit
+- `cone_saturated_bond_selection_test.py` — energetic check showing the barrier alone delocalizes phase slip
+
+**EM:**
+- `em_propagation_test.py`, `em_3d_test.py` — wave propagation (1D, 3D)
+- `em_3d_spectroscopy.py` — 3D atomic absorption with geometric falloff
+
+---
+
+## Quick start
+
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-## Run experiment
-```
-python scripts/electron_formation.py
+Run any demonstration:
+```bash
+python scripts/g_from_substrate.py        # gravity from substrate (0.06% match)
+python scripts/strong_field_gravity.py    # 5 GR tests
+python scripts/precision_qed_tests.py     # QED precision tests
+python scripts/cmb_phase_transition.py    # CMB reinterpretation
 ```
 
-## Test
-```
+Run tests:
+```bash
 pytest
 ```
 
-## What this tests
+---
 
-Two neutrinos on collision course at 45° angles. If the rules produce a bound orbital state, that's a positive result for the theory. If they don't, the rules need revision.
+## What the model claims
 
-## Empirical results, summary
+The substrate is the only fundamental thing. Everything else is intended to emerge as a stable or transient substrate pattern:
 
-(Full derivation status in spec §17.)
+```
+Substrate
+  │
+  ├─ Charge-asymmetric channel ──→ Electromagnetism
+  ├─ Charge-symmetric channel ───→ Gravity
+  ├─ Cone-bouncing frequency ────→ Mass
+  ├─ Möbius half-flux ───────────→ Spin-½, Pauli exclusion
+  ├─ Local saturation σ=½ ───────→ Black holes (no singularity)
+  ├─ Universe-wide saturation ───→ Long bleed-off era, not a singular beginning
+  ├─ De-saturation phase shift ──→ CMB mark + clean radiation/matter split
+  ├─ Multi-kink composites ──────→ Dark matter
+  ├─ Baseline strain σ₀ ─────────→ Dark energy
+  └─ Saturation/dissipation ─────→ Cosmic cycles
+```
 
-**Demonstrated:**
-- Medium back-reaction + cone projection produces sustained 2D orbital binding (5.62 full revolutions in `back_reaction_v2.py` Test 2; |v|=C preserved).
-- Möbius internal-twist dynamics produces state-dependent Pauli exclusion: opposite-twist pairs bind, same-twist pairs diverge (`mobius_pauli_test.py`).
-- Hydrogen isotope shifts at Bohr-scaled radii: D/H = +272 ppm, T/H = +363 ppm — match real measurements within ppm precision (`hydrogen_isotopes_v3.py`).
+**One mechanism, many phenomena.** The model aims to unify what standard physics treats as separate: EM and gravity, wave and particle behavior, lepton excitations, black-hole saturation, CMB de-saturation, and cosmic cycles.
 
-**Derived analytically:**
-- c² = K/ρ from linear elasticity Lagrangian (Path B Phase 1.1).
-- Sine-Gordon kink rest energy E_K = 8K/ξ; neutrino rest mass m_ν = 8ρξ (Path B Phase 1.2).
-- Cone azimuth = exactly 1 turn per orbital revolution (geometric necessity).
+---
 
-**Falsified informatively:**
-- Bare displacement-only rule (no back-reaction) gives 1D bound only, no 2D orbits — drove the §5.5 back-reaction revision.
-- Simple sine-Gordon breather predicts m_e ≤ 2 m_ν; real ratio is ~10⁵ — drove the spin-½ Möbius requirement and Path B Phase 2.2 reformulation as fermionic breather.
-- 2D simulation of any kind cannot produce 2D orbital motion (cone collapses to 4 directions) — drove the 3D simulation work.
+## Open problems
 
-**Still posited or open** (each is bounded work for future sessions):
-- The 45° rule itself.
-- The medium length scale ξ.
-- The specific bi-pyramid type for nucleons.
-- Multi-electron shell-filling rule.
+The current high-value gaps:
 
-## Result of v1 experiment
+1. Numerical α from the substrate Lagrangian
+2. Specific lepton excitation energies (Δ₁, Δ₂), now reframed as vertex eigenvalue ratios `κ_μ/κ_e ≈ 4.28e4` and `κ_τ/κ_e ≈ 1.21e7`
+3. CKM/PMNS and the flavour-mixing operator, not more angle numerology
+4. Current-quark masses and SU(3)-breaking renormalization
+5. Matter-sector orientation selection / inheritance, not one-shot Big-Bang baryogenesis
+6. Planck-scale UV completion and the missing dimensionless input `χ_UV ≈ 4.2e-23`
+7. Saturated bleed-off law, critical de-saturation threshold, `f_vis <= 4e-4`, and full CMB/Hubble fit from derived transfer windows
+8. Quantitative dark substrate-stress sector: derive the neutral phase-space measure, mobile split, `α³/√3` coherence filter, second-order neutral stiffness `K_eff/K = α²`, coupled `ρ_kink/ρ_pol` dynamics, and full lensing-map signatures; current finite-speed transport and EM-darkness audits require heavy neutral mobile stress plus ultra-low-frequency coherent polarization, not pure polarization
+9. Strong-field GR full nonlinear regime
 
-Run on: 2026-04-29
-Parameters: DT=0.01, R_OVERLAP=0.05, PUSH=0.05, R_BOUND=0.5, PERSISTENCE=50, N_STEPS=1000.
-Scale check: c·dt = 0.01; R_OVERLAP and PUSH (both 0.05) are 5× c·dt — small relative to the simulation domain (~4 units initial separation) but a few times the per-step travel distance.
+These are bounded problems, but several may require additional substrate physics rather than only more algebra.
 
-### Outcome
+Current audit: strongest in QCD-scale mechanics and standard-physics containment; weakest in lepton hierarchy, CKM/flavour mixing, Planck/UV closure, precision cosmology transfer functions, and dark matter quantification.
 
-BOUND state first detected at step 297, and **persisted for the remaining 703 steps** of the run. Inspected trajectory:
+---
 
-| step | x_A | y_A | x_B | y_B | dist |
-|---:|---:|---:|---:|---:|---:|
-| 0   | -2.000 | 0.000 |  2.000 | 0.000 | 4.000 |
-| 247 | -0.253 | 1.747 |  0.253 | 1.747 | 0.507 |
-| 280 | -0.045 | 1.980 |  0.045 | 1.980 | 0.090 |
-| 400 | -0.047 | 2.828 |  0.047 | 2.828 | 0.093 |
-| 700 | -0.025 | 4.950 |  0.025 | 4.950 | 0.051 |
-| 1000 | -0.029 | 7.071 |  0.029 | 7.071 | 0.058 |
+## Philosophy
 
-The pair-distance oscillates between ~0.05 and ~0.10 from step ~280 onward and never re-separates within the observation window.
+> **The medium is the eternal entity; matter patterns are temporary.**
 
-### Interpretation (honest)
+The substrate is more fundamental than any matter configuration. Particles, atoms, stars, galaxies — even our entire universe — are temporary patterns of strain in an eternal elastic medium. Cosmic cycles don't reset the substrate; they reset the patterns ON it.
 
-This is a **partial positive result** for spec §5 (the displacement-only dynamics rule). The rule alone, with no restoring force, no wave emission, no other added structure, produces a *persistent bound state* — that's stronger than was anticipated.
+The substrate parameters (K, ρ, ξ, ...) are properties of the eternal medium, constant across all cycles. Anthropic selection isn't needed — every cycle has the same physics.
 
-Important caveat: **the bound state is 1D, not 2D.** It is a relative-coordinate confinement in x with linear drift in y (the COM moves up at +c/√2 ≈ 0.707, exactly the original y-momentum the two particles brought in). The y-momentum is conserved (as the spec demands — vectors never reorient). The x-momentum is repeatedly exchanged between the two particles via displacement, producing the oscillation.
+---
 
-This is not yet the **2D orbital cone** the spec §6 expects for a true electron — it is a 1D bound oscillation co-moving with a y-drift. Whether the 2D cone emerges with different initial conditions (e.g., velocities chosen so net y-momentum cancels) or requires further structure in the rule is the natural Path C v2 question.
-
-### What this tells us about the theory
-
-- Spec §5 (displacement-only, vectors preserved) is **strong enough to produce binding** — the "stiff medium gives a gyroscope" picture works mechanically. Not a falsification.
-- Spec §6 (electron as 2D bound orbit sweeping a 3D cone) is **not yet demonstrated** — what we got is a 1D x-oscillation with y-drift, not a 2D rotation. v2 needs to test initial conditions where the COM is at rest.
-- Spec §2 (no correction loops) was honored: the parameters were chosen once based on physical scale and not adjusted. The result is what the rule produced, not what we wanted to see.
-
-### Suggested Path C v2
-
-1. Initial conditions with zero net momentum: e.g., A at (-2, 0) velocity (s, s), B at (2, 0) velocity (-s, -s). Test whether 2D circulation emerges.
-2. Parameter sweep over R_OVERLAP and PUSH at fixed c, dt: check whether the bound state survives or degrades, and whether the orbit radius depends predictably on these (as A+E in spec §6 predicts).
-3. Run longer (10⁵ steps) and check for slow drift, dissipation, or eventual unbinding.
-
-## Result of v2 experiment (zero net momentum)
-
-Run on: 2026-04-29
-Initial conditions: A at (-2, -2) heading NE (s, s); B at (2, 2) heading SW (-s, -s). Center of mass at origin, zero net momentum. 2000 steps, otherwise same parameters as v1.
-
-### Outcome
-
-Bound state first detected at step 307 (essentially the same step as v1 once the diagonal geometry is accounted for) and persisted through all 2000 steps. Final relative distance: 0.057.
-
-**Relative-position angle: locked at 45° throughout. Spread across 21 samples after binding: 0.00 degrees.** The relative-position vector (B − A) does not rotate. The bound state is a 1D oscillation along the approach diagonal, with zero 2D orbital character.
-
-### Interpretation: 2D orbits are geometrically unreachable in 2D under the 45° constraint
-
-In 2D, the only allowed velocity vectors are (±s, ±s) — four discrete directions at 45° to the axes. For zero net momentum, the two particles' velocities must be exactly antiparallel (v_B = −v_A). Antiparallel head-on approach geometrically forces a 1D oscillation along the line of approach — there is no velocity component perpendicular to that line, and the displacement rule cannot manufacture one (vectors never reorient, per spec §5).
-
-This is a **structural finding, not a simulation artifact**: under spec §5 (vectors preserved) plus the 45° quantization, **a 2D orbit is mathematically impossible in 2D simulation**, regardless of initial position or parameter choice.
-
-### What this means for the spec
-
-- **Spec §5 (displacement rule, vectors preserved) is again validated for binding.** The bound state is even tighter and more persistent than v1.
-- **Spec §6 (electron as a 2D bound orbit sweeping a 3D cone) is NOT achievable in 2D.** It requires either:
-  1. **3D simulation** — in 3D, "45° to one axis" specifies a *cone* of directions (a continuous U(1) family), giving the velocity components needed for tangential orbital motion. This is the cleanest path forward and matches the spec's "rotation sweeps a 3D cone" language.
-  2. **Revise the 45° constraint** — allow more discrete velocity directions in 2D, or relax to a continuum.
-  3. **Add structure beyond bare displacement** — e.g., medium back-reaction or wave emission that creates a centripetal effect.
-
-The cleanest move is option 1 (upgrade to 3D) since the spec already says the medium is 3D. The 2D simulation was a v1 simplification, and we now know it was a load-bearing simplification: it filtered out exactly the structure (3D orbital cone) the theory predicts.
-
-Per spec §2: this is *not* a falsification of the theory — the rules are working, and the limitation is the simulation's dimensionality, not the rules themselves. But the spec's claim that the electron is a 2D bound orbit needs to be tested in 3D before claiming victory.
-
-## Result of v3 experiment (3D simulation)
-
-Run on: 2026-04-29
-Five initial-condition configurations tested in 3D with Neutrino3D (per-particle axis + 45° cone constraint). Same parameters as v1/v2.
-
-### Outcome — 3D does *not* deliver 2D orbital rotation under bare displacement
-
-**Only one of five configurations produced any bound state.** The others failed because the chosen velocities never brought particles within R_OVERLAP=0.05 of each other.
-
-| Config | Description | Initial L (about COM) | Result |
-|---|---|---|---|
-| A | 2D-v1 analog: head-on x, both axes +z, shared +z drift | (0, 0, 0) | **1D bound** in rel-x at ~0.07; no rotation (0.00° angular drift across 8 bound samples) |
-| B | Zero z-drift: opposite axes, opposite v_z | (0, 2.83, 0) | No binding; min dist 2.83 (separated in z while approaching in x) |
-| C | Nonzero L_z via y-offset positions | (0, 0, 1.41) | No binding; min dist 2.00 (y-offset preserved, never approached) |
-| D | Tangential velocities | (0, 0, -2.83) | No binding; min dist 4.00 (no x-convergence) |
-| E | Oblique with y-offset | (0, 0, -1.5) | No binding; min dist 2.12 |
-
-### Interpretation: the bare displacement rule is geometrically narrow
-
-The displacement-only rule **only produces binding when the two particles' trajectories actively bring them close enough to overlap, repeatedly**. This requires:
-
-- A velocity component along the line connecting them (so they approach), AND
-- The component must persist (so they keep coming back after each push), AND
-- Other components must not drive them apart on subsequent crossings
-
-Most 3D initial conditions don't satisfy all three. Even Config C, with **nonzero angular momentum**, didn't bind — the y-offset in initial positions meant particles never got within R_OVERLAP, regardless of how much L_z they carried.
-
-**Critical implication:** **angular momentum at the start does NOT translate into orbital binding under bare displacement.** This contradicts a naive reading of "persistent linear c turning into angular momentum" — that turning requires a mechanism the current rule lacks.
-
-### What this tells us about the spec
-
-- **Spec §5 (displacement-only, vectors preserved) produces 1D bound states only in narrow geometries.** It does NOT produce 2D orbital rotation in any tested configuration, in 2D or 3D.
-- **Spec §6 (electron as 2D bound orbit sweeping a 3D cone) is NOT reachable from spec §5 alone.** Either:
-  1. The rule needs additional structure — e.g., **medium back-reaction** that creates an attractive (centripetal) component to hold particles in orbit, OR
-  2. The "orbit" in §6 should be reinterpreted as the 1D bound state we observe (which is *not* the conventional electron picture from QM), OR
-  3. A "bound state" requires more than 2 neutrinos cooperating, and the 2-particle test is the wrong unit (3+ particles might produce the cone via cooperative dynamics).
-- **The user's clarification** ("push is centrifugal, bind is persistent linear c turning into angular momentum") describes the *target* behavior, but the current rule doesn't produce it. The conversion of linear-c → angular-c needs an explicit mechanism the spec hasn't yet specified.
-
-### Path forward
-
-Per spec §2 (no correction loops): the right response is **direct revision of the spec**, not parameter tuning. Three candidates:
-
-1. **Add a "trapping" rule** — when particles persist near each other for some duration, the medium imposes a curvature on their trajectories. This would convert linear momentum to angular momentum directly (matching the user's language).
-2. **Add medium back-reaction** — the displacement rule already pushes apart; add a complementary attractive component when particles are between R_OVERLAP and some larger R_BOUND. This would give attractive + repulsive forces, like Lennard-Jones, producing real orbital binding.
-3. **Test 3+ particle systems** — maybe two-body binding is incomplete and three or four neutrinos (matching the bi-pyramid §7 picture) produce the orbital structure cooperatively.
-
-The simulation correctly enforced spec §5's "vectors never reorient" — and the result is honest. The spec's higher-level claims need to be updated to reflect that §5 alone is insufficient for §6.
-
-## Result of medium back-reaction test (proof of concept)
-
-Run on: 2026-04-29
-Three experiments with a Lennard-Jones-style back-reaction added to the free propagation: medium pushes apart when d < r_eq=0.20, pulls together when r_eq < d < r_capture=1.0, no interaction beyond that. Cone constraint relaxed for this proof of concept; raw numpy arrays.
-
-### Outcome — back-reaction produces 2D orbital binding (Exp 3)
-
-| Exp | Setup | Result |
-|---|---|---|
-| 1 | Head-on x with shared z-drift | No binding; overshoot, separates |
-| 2 | Zero net momentum, head-on diagonal | No binding; overshoot, separates |
-| 3 | **Tangential initial conditions at r_eq** | **2D ORBITAL BINDING observed: rel-position rotates 86° by step 1000, both rel_x and rel_y oscillate** |
-
-### What this confirms
-
-**Medium back-reaction is the missing mechanism for spec §6.** With an attractive component added between r_eq and r_capture (in addition to the centrifugal push at d < r_eq), tangential initial conditions produce a 2D orbital bound state — exactly the structure spec §6 claims for the electron. The relative-position vector rotates rather than locking on an axis. Persistent linear c is genuinely converted to angular motion by the medium's back-reaction force.
-
-### What this tells us
-
-- **Spec §5's "vectors never reorient" is too strict.** It must be revised to: *vectors don't reorient by themselves; the medium's back-reaction reorients them collectively in bound configurations.* Free particles still propagate at c without redirection.
-- **A new §5.5 should specify medium back-reaction**: a two-body effective potential with minimum at r_eq, attractive at d > r_eq (the centripetal pull we were missing), repulsive at d < r_eq (the centrifugal push we already had).
-- **Spec §6's 2D orbital cone is now reachable.** The orbit forms in the plane perpendicular to the bound pair's shared axis, at radius r_eq. With the 45° cone constraint added back (projecting velocities to the cone after each back-reaction step), orbits should sweep the 3D cone exactly as spec §6 describes.
-- **r_eq is a derivable quantity**, not a free parameter. From the medium's stiffness K and the particle's strain content. Computing it analytically from K is the first numerical checkpoint of Path B.
-
-### Honesty notes (numerical artifacts to fix in v2)
-
-- Velocity magnitudes drift from 1.000 down to 0.77 and back during the orbit. Energy is not exactly conserved with the simple Euler integrator and impulsive force model. A velocity-Verlet integrator with a smooth potential would clean this up.
-- Orbital distance varies from 0.18 to 0.62 (not a clean circle at r_eq=0.20) — likely the same numerical issue.
-- The 45° cone constraint was relaxed for this test. Re-imposing it (by projecting velocities back to the cone after each back-reaction step) is the next refinement and is expected to also fix energy conservation by ensuring velocities stay at speed C.
-
-The structural result — *that medium back-reaction produces 2D orbital binding* — is robust regardless of these numerical artifacts. The next iteration is a polished version with proper integration and cone projection, which should deliver clean stable orbits.
+*See `MODEL.md` for the current working framework.*

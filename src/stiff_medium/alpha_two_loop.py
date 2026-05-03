@@ -220,102 +220,19 @@ def compute_i_figure8(i_bundle_1loop: float) -> float:
 
 
 def compute_i_continuum(
-    m_kink_xi: float = M_KINK_XI,
     k_min: float = 1.0,
     lambda_cutoff: float = LAMBDA_CUTOFF,
-    mu_ir: float = MU_IR_2L,
     n_k: int = 200,
-) -> tuple[float, str]:
+) -> float:
     """Compute the continuum scattering-state correction to Z_photon.
 
-    The zero-mode/scattering-state overlap is exactly zero by orthogonality
-    (Sturm-Liouville theorem for the reflectionless Pöschl-Teller potential).
-    The remaining contribution is from the pure continuum-continuum bubble.
-
-    For the Pöschl-Teller potential V(x) = -2 sech²(x) (which governs the
-    kink fluctuation spectrum for M_kink×ξ = 1), the scattering states are:
-
-        ψ_k(x) = (ik - tanh(x)) e^{ikx} / sqrt(k² + 1)
-
-    Their contribution to the photon self-energy at zero external momentum is
-    proportional to:
-
-        I_cont = ∫_{k_min}^{Λ} |<ψ_k|j_μ|ψ_k>|² / (k² + 1) dk
-
-    where j_μ is the current operator.  In the long-wavelength limit:
-
-        |<ψ_k|j_μ|ψ_k>|² ~ |ψ̃_k(0)|² = |∫ ψ_k(x) dx|²
-
-    The integral of ψ_k(x) = (ik - tanh(x)) e^{ikx} / sqrt(k²+1) diverges
-    as k→0 (the scattering state is not normalizable in the usual sense), so
-    we regulate by integrating over a finite box of size L and then taking
-    the density-of-states limit:
-
-        I_cont = (1/L) ∫_{k_min}^{Λ} dk / (k² + 1)  × [box factor]
-
-    In the continuum limit L→∞, the density-of-states normalization gives a
-    contribution that scales as 1/(k_min L), which → 0 for large L.
-    The physical cutoff is provided by the kink width ξ = 1/M_kink (in natural units = 1).
-
-    Result: the continuum contribution is:
-
-        I_cont = (1/(2π)) arctan(Λ/k_min) − (1/(2π)) arctan(1)
-               ≈ (1/(2π)) × (π/2 - π/4) = 1/8
-
-    for Λ >> k_min = 1.  This is an OVERESTIMATE since we have not included
-    the density-of-states suppression; the true value is much smaller.
-
-    Args:
-        m_kink_xi: M_kink × ξ (natural units = 1.0).
-        k_min: Minimum scattering momentum (threshold = M_kink = 1 in nat. units).
-        lambda_cutoff: UV momentum cutoff [M_kink units].
-        mu_ir: IR regulator.
-        n_k: Number of momentum quadrature points.
-
-    Returns:
-        Tuple (I_continuum, note_string) where:
-        - I_continuum is the numerical estimate.
-        - note_string explains the key physics (orthogonality, validity of the estimate).
+    The zero-mode/scattering cross term is zero by orthogonality; this estimates
+    the pure continuum-continuum bubble with the Krein-Friedel-Lloyd density
+    shift for the reflectionless Poschl-Teller potential.
     """
-    # The zero-mode/continuum cross term is exactly zero by orthogonality.
-    # We compute the pure continuum contribution using the simplified density:
-    #    rho_cont(k) = 1 / (k² + 1)  × transmission_factor(k)
-    #
-    # Transmission factor for the reflectionless Pöschl-Teller potential:
-    #    |T(k)|² = k²(k²+1) / [(k²+1)²]  (reflectionless: |T|² = 1 for V_0 = 2)
-    # (For the Pöschl-Teller potential V = -n(n+1)sech²(x) with n=1: |T|²=1 ∀k)
-    # So the potential is REFLECTIONLESS, meaning every incoming state is transmitted
-    # with |T|² = 1.  The density of states is the free density modified by the
-    # phase shift.
-    #
-    # For a reflectionless potential with one bound state (zero mode), the
-    # Krein-Friedel-Lloyd formula gives:
-    #
-    #   Δn(k) = -(1/π) d/dk [δ(k)]  where δ(k) = -arctan(1/k) + π/2 (for n=1 PT)
-    #
-    # So Δn(k) = (1/π) × 1/(k² + 1)  (positive: extra state pushed in from the continuum)
-    #
-    # The continuum contribution to the photon self-energy is:
-    #   I_cont = ∫_{k_min}^{Λ} [1/(k²+1)] × Δn(k) dk
-    #          = (1/π) ∫_{k_min}^{Λ} dk / (k²+1)²
-    #          = (1/π) × [k/(2(k²+1)) + (1/2)arctan(k)]_{k_min}^{Λ}
-
-    def integrand(k: float) -> float:
-        return 1.0 / (PI * (k**2 + 1.0) ** 2)
-
     k_grid = np.linspace(k_min, lambda_cutoff, n_k)
-    int_vals = np.array([integrand(k) for k in k_grid])
-    i_cont = float(np.trapezoid(int_vals, k_grid))
-
-    note = (
-        "Continuum correction uses Krein-Friedel-Lloyd density-of-states shift "
-        "Δn(k) = (1/π)/(k²+1) for the reflectionless Pöschl-Teller potential "
-        "(M_kink×ξ=1). Zero-mode/scattering-state cross term is EXACTLY ZERO "
-        "by orthogonality of eigenstates of the Dirac Hamiltonian in the kink background. "
-        f"Integrating from k_min={k_min} to Λ={lambda_cutoff} gives I_cont={i_cont:.6e}. "
-        "This is the leading genuine continuum contribution at one-loop order."
-    )
-    return i_cont, note
+    int_vals = 1.0 / (PI * (k_grid**2 + 1.0) ** 2)
+    return float(np.trapezoid(int_vals, k_grid))
 
 
 # ---------------------------------------------------------------------------
@@ -323,47 +240,15 @@ def compute_i_continuum(
 # ---------------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(frozen=True)
 class TwoLoopResult:
-    """Result of the two-loop Z_photon computation.
-
-    Attributes:
-        beta_squared: Sine-Gordon coupling β².
-        g_thirring: Coleman-bosonized Thirring coupling.
-        g_yukawa: Yukawa coupling = g_Thirring × c_1 (Möbius factor).
-        alpha_bare: Bare fine-structure constant.
-        i_bundle_1loop: The 1-loop overlap integral I_1.
-        i_sunset: Two-loop sunset integral I_sunset.
-        i_figure8: Two-loop figure-8 correction (= 0.5 × I_1²).
-        i_continuum: Continuum scattering-state correction.
-        lambda_1loop: Effective loop expansion parameter λ = (g²/π²) × I_1.
-        z_photon_1loop: Z_photon at 1-loop order.
-        delta_z_sunset: ΔZ from sunset = (g²/π²)² × I_sunset.
-        delta_z_fig8: ΔZ from figure-8 = (g²/π²)² × (0.5 I_1²).
-        delta_z_continuum: ΔZ from continuum = (g²/π²) × I_cont.
-        z_photon_2loop: Total Z_photon at 2-loop order.
-        alpha_2loop: Renormalized α at 2-loop = α_bare / Z_2loop.
-        inv_alpha_2loop: 1/α at 2-loop.
-        continuum_note: Explanation of continuum calculation.
-    """
+    """Compact result of the current two-loop Z_photon map."""
 
     beta_squared: float
-    g_thirring: float
-    g_yukawa: float
     alpha_bare: float
-    i_bundle_1loop: float
-    i_sunset: float
-    i_figure8: float
-    i_continuum: float
-    lambda_1loop: float
-    z_photon_1loop: float
-    delta_z_sunset: float
-    delta_z_fig8: float
-    delta_z_continuum: float
     z_photon_2loop: float
     alpha_2loop: float
     inv_alpha_2loop: float
-    continuum_note: str
 
 
 @dataclass(frozen=True)
@@ -384,12 +269,6 @@ class AlphaTwoLoopAudit:
 
 def compute_z_photon_2loop(
     beta_squared: float,
-    m_kink_xi: float = M_KINK_XI,
-    x_cutoff: float = X_CUTOFF,
-    n_x_1loop: int = N_X_FINE,
-    n_x_2loop: int = N_X_COARSE,
-    lambda_cutoff: float = LAMBDA_CUTOFF,
-    verbose: bool = False,
 ) -> TwoLoopResult:
     """Compute Z_photon through two-loop order.
 
@@ -409,15 +288,9 @@ def compute_z_photon_2loop(
 
     Args:
         beta_squared: Sine-Gordon coupling β².
-        m_kink_xi: M_kink × ξ in natural units.
-        x_cutoff: Half-width of position-space domain.
-        n_x_1loop: Grid points for 1-loop integral (finer).
-        n_x_2loop: Grid points for 2-loop integrals (coarser, n³ cost).
-        lambda_cutoff: UV momentum cutoff for continuum integral.
-        verbose: Print progress if True.
 
     Returns:
-        TwoLoopResult with full breakdown.
+        TwoLoopResult with the compact audit values.
 
     Raises:
         ValueError: If beta_squared outside (0, 8π).
@@ -436,22 +309,10 @@ def compute_z_photon_2loop(
         # Non-physical regime: return trivial result.
         return TwoLoopResult(
             beta_squared=beta_squared,
-            g_thirring=g_thirring,
-            g_yukawa=0.0,
             alpha_bare=0.0,
-            i_bundle_1loop=0.0,
-            i_sunset=0.0,
-            i_figure8=0.0,
-            i_continuum=0.0,
-            lambda_1loop=0.0,
-            z_photon_1loop=1.0,
-            delta_z_sunset=0.0,
-            delta_z_fig8=0.0,
-            delta_z_continuum=0.0,
             z_photon_2loop=1.0,
             alpha_2loop=0.0,
             inv_alpha_2loop=float("inf"),
-            continuum_note="Non-physical regime: g_Thirring ≤ 0.",
         )
 
     # Möbius bundle coupling
@@ -460,60 +321,26 @@ def compute_z_photon_2loop(
     # Loop coupling expansion parameter λ = g²/π²
     lambda_coupling = (g_yukawa**2) / (PI**2)
 
-    if verbose:
-        print(f"  β²={beta_squared/PI:.4f}π | g_T={g_thirring:.6f} | "
-              f"g_Y={g_yukawa:.6f} | λ={lambda_coupling:.6f}")
-
     # --- 1-loop integral ---
-    if verbose:
-        print("  Computing I_1 (1-loop bubble) ...")
     i_bundle = compute_i_bundle(
-        m_kink_xi=m_kink_xi,
-        x_cutoff=x_cutoff,
-        n_x=n_x_1loop,
+        m_kink_xi=M_KINK_XI,
+        x_cutoff=X_CUTOFF,
+        n_x=N_X_FINE,
         xi_reg=XI_REG,
         mu_ir=MU_IR_2L,
     )
-    z_1loop = 1.0 + lambda_coupling * i_bundle
-
-    if verbose:
-        print(f"  I_1={i_bundle:.6e} | Z_1loop={z_1loop:.6f}")
 
     # --- 2-loop sunset ---
-    if verbose:
-        print(f"  Computing I_sunset (2-loop, {n_x_2loop}^3 grid) ...")
-    i_sunset = compute_i_sunset(
-        m_kink_xi=m_kink_xi,
-        x_cutoff=x_cutoff,
-        n_x=n_x_2loop,
-        xi_reg=XI_REG,
-        mu_ir=MU_IR_2L,
-    )
+    i_sunset = compute_i_sunset()
     delta_z_sunset = lambda_coupling**2 * i_sunset
-
-    if verbose:
-        print(f"  I_sunset={i_sunset:.6e} | ΔZ_sunset={delta_z_sunset:.6e}")
 
     # --- Figure-8 ---
     i_fig8 = compute_i_figure8(i_bundle)
     delta_z_fig8 = lambda_coupling**2 * i_fig8
 
-    if verbose:
-        print(f"  I_fig8={i_fig8:.6e} | ΔZ_fig8={delta_z_fig8:.6e}")
-
     # --- Continuum correction ---
-    if verbose:
-        print("  Computing I_continuum ...")
-    i_cont, cont_note = compute_i_continuum(
-        m_kink_xi=m_kink_xi,
-        k_min=1.0,
-        lambda_cutoff=lambda_cutoff,
-        mu_ir=MU_IR_2L,
-    )
+    i_cont = compute_i_continuum()
     delta_z_continuum = lambda_coupling * i_cont
-
-    if verbose:
-        print(f"  I_cont={i_cont:.6e} | ΔZ_cont={delta_z_continuum:.6e}")
 
     # --- Total Z at two loops ---
     z_2loop = (
@@ -533,22 +360,10 @@ def compute_z_photon_2loop(
 
     return TwoLoopResult(
         beta_squared=beta_squared,
-        g_thirring=g_thirring,
-        g_yukawa=g_yukawa,
         alpha_bare=alpha_bare,
-        i_bundle_1loop=i_bundle,
-        i_sunset=i_sunset,
-        i_figure8=i_fig8,
-        i_continuum=i_cont,
-        lambda_1loop=lambda_coupling,
-        z_photon_1loop=z_1loop,
-        delta_z_sunset=delta_z_sunset,
-        delta_z_fig8=delta_z_fig8,
-        delta_z_continuum=delta_z_continuum,
         z_photon_2loop=z_2loop,
         alpha_2loop=alpha_2loop,
         inv_alpha_2loop=inv_alpha_2loop,
-        continuum_note=cont_note,
     )
 
 

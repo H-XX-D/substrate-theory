@@ -447,8 +447,8 @@ class ConsistencyTester:
 
         notes = (
             "Both modules implement m_mu/m_e = exp(n_M / (K_pair^4 pi)) and "
-            "m_tau/m_mu = exp(n_M / (K_rank (K_rank+1) pi)). Drift > 1e-6 "
-            "would indicate the two formulas have desynced."
+            "m_tau/m_mu = exp(n_M/(K_pair^4 pi) - (n_R-R)/(K_pair(K_pair+1))). "
+            "Drift > 1e-6 would indicate the two formulas have desynced."
         )
         if errors:
             notes += "  errors: " + "; ".join(f"{k}={v}" for k, v in errors.items())

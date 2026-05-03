@@ -72,10 +72,14 @@ def render_k4_face_pair() -> list[str]:
     # Binding energy curve
     distances = np.linspace(0.5, 4.0, 80)
     curve = coupling.binding_energy_curve(distances)
-    if curve.ndim == 2 and curve.shape[0] == 2:
-        d_vals, e_vals = curve[0], curve[1]
+    if isinstance(curve, tuple) and len(curve) == 2:
+        d_vals, e_vals = np.asarray(curve[0]), np.asarray(curve[1])
     else:
-        d_vals, e_vals = distances, np.asarray(curve).flatten()
+        arr = np.asarray(curve)
+        if arr.ndim == 2 and arr.shape[0] == 2:
+            d_vals, e_vals = arr[0], arr[1]
+        else:
+            d_vals, e_vals = distances, arr.flatten()
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.plot(d_vals, e_vals, "b-", linewidth=2)
     ax.axhline(-2.222, color="red", linestyle="--", label="ε_face = 2.222 MeV")
@@ -243,29 +247,38 @@ def render_saturation_simulator() -> list[str]:
 def render_phonon_dispersion() -> list[str]:
     from src.stiff_medium.phonon_dispersion import PhononDispersion
     out = []
-    pd = PhononDispersion(K=1.0, rho=1.0)
     fig, axes = plt.subplots(2, 3, figsize=(15, 9))
-    geoms = [("1d", "1D chain"), ("2d_sq", "2D square"),
-             ("2d_hex", "2D hexagonal"),
-             ("3d_fcc", "3D FCC"), ("3d_bcc", "3D BCC"),
-             ("3d_diamond", "3D diamond")]
-    for ax, (g, label) in zip(axes.flat, geoms):
+    # (lattice key, label, k-path through high-symmetry points)
+    geoms = [
+        ("chain", "1D chain", ["G", "X", "G"]),
+        ("square", "2D square", ["G", "X", "M", "G"]),
+        ("hex", "2D hexagonal", ["G", "M", "K", "G"]),
+        ("3d_fcc", "3D FCC", ["G", "X", "L", "G", "K"]),
+        ("bcc", "3D BCC", ["G", "H", "N", "G", "P"]),
+        ("diamond", "3D diamond", ["G", "X", "L", "G", "K"]),
+    ]
+    # Map any aliases to actual lattice factory keys
+    lattice_alias = {"3d_fcc": "fcc"}
+    for ax, (g, label, path) in zip(axes.flat, geoms):
+        lattice_key = lattice_alias.get(g, g)
         try:
-            data = pd.dispersion(geometry=g, n_k=80)
-            k = data.get("k")
-            omega = data.get("omega")
-            if k is not None and omega is not None:
-                if omega.ndim == 1:
-                    ax.plot(k, omega, "b-", linewidth=2)
-                else:
-                    for i in range(omega.shape[1]):
-                        ax.plot(k, omega[:, i], alpha=0.75, linewidth=1.5)
+            pd = PhononDispersion(K=1.0, rho=1.0, lattice=lattice_key)
+            x, omega, ticks = pd.dispersion_curve(path, n_points=40)
+            if omega.ndim == 1:
+                ax.plot(x, omega, "b-", linewidth=2)
+            else:
+                for i in range(omega.shape[1]):
+                    ax.plot(x, omega[:, i], alpha=0.75, linewidth=1.5)
+            for t in ticks:
+                ax.axvline(t, color="gray", alpha=0.3, linewidth=0.5)
+            ax.set_xticks(ticks)
+            ax.set_xticklabels(path, fontsize=9)
             ax.set_title(label)
-            ax.set_xlabel("k")
+            ax.set_xlabel("k-path")
             ax.set_ylabel("ω")
             ax.grid(True, alpha=0.3)
         except Exception as e:
-            ax.text(0.5, 0.5, f"{label}\n(N/A)", ha="center",
+            ax.text(0.5, 0.5, f"{label}\n(N/A: {type(e).__name__})", ha="center",
                     transform=ax.transAxes, fontsize=9)
     fig.suptitle("Substrate phonon dispersion: ω(k) for 6 lattice geometries")
     fig.tight_layout()
@@ -399,18 +412,28 @@ def render_cosmology_evolution() -> list[str]:
         ax.set_title("Scale factor a(t)")
         ax.grid(True, alpha=0.3)
 
-    # Energy density components
+    # Energy density components — decompose rho_total into matter + Lambda
     ax = axes[1]
-    if "rho_matter" in history or "rho_lambda" in history:
-        for k, color in [("rho_matter", "blue"), ("rho_radiation", "red"),
-                         ("rho_lambda", "green"), ("rho_total", "black")]:
-            if k in history:
-                ax.semilogy(history.get("t", range(len(history[k]))),
-                            history[k], color=color, label=k.replace("rho_", "ρ_"))
+    if "rho_total" in history and "a" in history:
+        a = np.asarray(history["a"])
+        t = np.asarray(history.get("t", np.arange(len(a))))
+        rho_total = np.asarray(history["rho_total"])
+        rho_lambda = float(sim.predict_rho_lambda())
+        a_today = a[-1] if len(a) else 1.0
+        rho_m_today = max(rho_total[-1] - rho_lambda, 0.0)
+        rho_matter = rho_m_today * (a_today / np.maximum(a, 1e-30)) ** 3
+        # Radiation scales as a^-4; tiny today, but plot for visualization
+        rho_radiation = rho_m_today * 1e-4 * (a_today / np.maximum(a, 1e-30)) ** 4
+        rho_lambda_arr = np.full_like(a, rho_lambda)
+        ax.semilogy(t, rho_matter, color="blue", label="ρ_matter (a⁻³)")
+        ax.semilogy(t, rho_radiation, color="red", label="ρ_radiation (a⁻⁴)")
+        ax.semilogy(t, rho_lambda_arr, color="green", linestyle="--",
+                    label=f"ρ_Λ ({rho_lambda:.2e})")
+        ax.semilogy(t, rho_total, color="black", linewidth=2, label="ρ_total")
         ax.set_xlabel("Time [arb units]")
-        ax.set_ylabel("Energy density")
-        ax.set_title("Cosmic energy budget evolution")
-        ax.legend()
+        ax.set_ylabel("Energy density [kg/m³]")
+        ax.set_title("Cosmic energy budget: matter + radiation + Λ")
+        ax.legend(fontsize=8)
         ax.grid(True, alpha=0.3)
     else:
         ax.text(0.5, 0.5, "(component evolution not exposed)",
