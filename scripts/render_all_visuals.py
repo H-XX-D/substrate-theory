@@ -4755,6 +4755,1467 @@ def render_ribosome() -> list[str]:
     return out
 
 
+def render_immune() -> list[str]:
+    """Produce 78_antibody_binding.png and 79_immune_response.png.
+
+    78: 3D Y-shaped antibody (IgG) with two Fab arms, Fc stem, paratopes
+        at each Fab tip, an antigen sphere bound to the right paratope,
+        and an MHC class-I platform with a 9-residue peptide.
+    79: Two panels.  Left -- antibody titer A(t) for primary (1 deg) vs
+        secondary (2 deg) response; secondary peaks ~100x higher and
+        ~3x faster.  Right -- SIR-like coupled pathogen P(t) and
+        antibody A(t) showing antibody peaks AFTER pathogen burst.
+    """
+    from src.stiff_medium.immune_substrate import (
+        ANTIBODY_FAB_LENGTH_NM,
+        ANTIBODY_FC_LENGTH_NM,
+        ANTIBODY_HINGE_ANGLE_DEG,
+        ImmuneGeometry,
+        ImmuneSimulator,
+    )
+    out: list[str] = []
+
+    geom = ImmuneGeometry()
+    sim = ImmuneSimulator(geometry=geom)
+
+    # ---- 78: 3D Y-shape antibody with bound antigen + MHC -------------
+    fig = plt.figure(figsize=(11, 9))
+    ax = fig.add_subplot(111, projection="3d")
+
+    fc_base, fc_hinge = geom.fc_endpoints()
+    ax.plot([fc_base[0], fc_hinge[0]],
+            [fc_base[1], fc_hinge[1]],
+            [fc_base[2], fc_hinge[2]],
+            color="tab:purple", linewidth=14, alpha=0.85,
+            solid_capstyle="round")
+
+    _, fab_left = geom.fab_endpoints("left")
+    _, fab_right = geom.fab_endpoints("right")
+    for tip in (fab_left, fab_right):
+        ax.plot([fc_hinge[0], tip[0]],
+                [fc_hinge[1], tip[1]],
+                [fc_hinge[2], tip[2]],
+                color="tab:blue", linewidth=14, alpha=0.85,
+                solid_capstyle="round")
+
+    ax.scatter([fc_hinge[0]], [fc_hinge[1]], [fc_hinge[2]],
+               c="black", s=160, zorder=10)
+
+    paratopes = geom.paratope_centers()
+    for p in paratopes:
+        u = np.linspace(0, 2 * np.pi, 16)
+        v = np.linspace(0, np.pi, 12)
+        r = geom.paratope_radius_nm
+        xs = p[0] + r * np.outer(np.cos(u), np.sin(v))
+        ys = p[1] + r * np.outer(np.sin(u), np.sin(v))
+        zs = p[2] + r * np.outer(np.ones_like(u), np.cos(v))
+        ax.plot_surface(xs, ys, zs, color="gold", alpha=0.85,
+                        edgecolor="darkgoldenrod", linewidth=0.2)
+
+    ag = geom.antigen_position("right")
+    u = np.linspace(0, 2 * np.pi, 20)
+    v = np.linspace(0, np.pi, 16)
+    R = geom.antigen_radius_nm
+    xs = ag[0] + R * np.outer(np.cos(u), np.sin(v))
+    ys = ag[1] + R * np.outer(np.sin(u), np.sin(v))
+    zs = ag[2] + R * np.outer(np.ones_like(u), np.cos(v))
+    ax.plot_surface(xs, ys, zs, color="tab:red", alpha=0.75,
+                    edgecolor="darkred", linewidth=0.3)
+
+    z_mhc = -ANTIBODY_FC_LENGTH_NM - 4.0
+    corners = geom.mhc_platform_corners(z_mhc=z_mhc)
+    plat_x = corners[[0, 1, 2, 3, 0], 0]
+    plat_y = corners[[0, 1, 2, 3, 0], 1]
+    plat_z = corners[[0, 1, 2, 3, 0], 2]
+    ax.plot(plat_x, plat_y, plat_z, color="seagreen", linewidth=2.0)
+    quad_x = np.array([[corners[0, 0], corners[1, 0]],
+                       [corners[3, 0], corners[2, 0]]])
+    quad_y = np.array([[corners[0, 1], corners[1, 1]],
+                       [corners[3, 1], corners[2, 1]]])
+    quad_z = np.array([[corners[0, 2], corners[1, 2]],
+                       [corners[3, 2], corners[2, 2]]])
+    ax.plot_surface(quad_x, quad_y, quad_z,
+                    color="lightgreen", alpha=0.5,
+                    edgecolor="seagreen", linewidth=0.4)
+
+    pep = geom.mhc_peptide_positions(z_mhc=z_mhc)
+    ax.plot(pep[:, 0], pep[:, 1], pep[:, 2],
+            color="darkorange", linewidth=3.5, alpha=0.95)
+    ax.scatter(pep[:, 0], pep[:, 1], pep[:, 2],
+               c="darkorange", s=55, edgecolors="saddlebrown",
+               linewidths=0.8, zorder=8)
+
+    ax.text(fc_base[0], fc_base[1], fc_base[2] - 0.7, "Fc stem",
+            color="tab:purple", fontsize=10, fontweight="bold",
+            ha="center")
+    ax.text(fab_left[0], fab_left[1] - 0.6, fab_left[2] + 0.6,
+            "Fab\n(L)", color="tab:blue", fontsize=10,
+            fontweight="bold", ha="center")
+    ax.text(fab_right[0], fab_right[1] + 0.6, fab_right[2] + 0.6,
+            "Fab\n(R)", color="tab:blue", fontsize=10,
+            fontweight="bold", ha="center")
+    ax.text(0.2, 0.0, 0.4, "hinge", color="black", fontsize=9)
+    ax.text(paratopes[0, 0], paratopes[0, 1] - 1.3, paratopes[0, 2],
+            "paratope", color="darkgoldenrod", fontsize=8,
+            ha="center")
+    ax.text(ag[0], ag[1] + 0.4, ag[2] + R + 0.7,
+            f"antigen\n(K_d = {sim.Kd_M:.0e} M)",
+            color="darkred", fontsize=9, fontweight="bold",
+            ha="center")
+    ax.text(0.0, 0.0, z_mhc - 1.0,
+            "MHC class I + peptide (9-mer)",
+            color="seagreen", fontsize=10, fontweight="bold",
+            ha="center")
+
+    ax.plot([fab_left[0], fab_right[0]],
+            [fab_left[1], fab_right[1]],
+            [fab_left[2] + 0.8, fab_right[2] + 0.8],
+            color="black", linestyle="--", linewidth=1.0)
+    ax.text(0.0, 0.0, fab_right[2] + 1.4,
+            f"span = {geom.total_span_nm():.1f} nm",
+            color="black", fontsize=9, ha="center")
+
+    ax.set_xlabel("x [nm]")
+    ax.set_ylabel("y [nm]")
+    ax.set_zlabel("z [nm]")
+    ax.set_title(
+        f"Antibody (IgG) Y-shape: Fab + Fc + paratopes + bound antigen\n"
+        f"Fab arm = {ANTIBODY_FAB_LENGTH_NM} nm; "
+        f"hinge angle = {ANTIBODY_HINGE_ANGLE_DEG}deg; "
+        f"K_d = {sim.Kd_M:.0e} M  ->  delta_G "
+        f"= {sim.binding_free_energy_kcal_per_mol():.1f} kcal/mol"
+    )
+    span = geom.total_span_nm() * 0.7
+    ax.set_xlim(-span, span)
+    ax.set_ylim(-span, span)
+    ax.set_zlim(z_mhc - 2.0, fab_right[2] + 3.0)
+    try:
+        ax.set_box_aspect((1.0, 1.0, 1.6))
+    except Exception:
+        pass
+    fig.tight_layout()
+    out.append(save(fig, "78_antibody_binding.png"))
+
+    # ---- 79: Antibody titer 1 deg vs 2 deg + SIR coupled --------------
+    fig = plt.figure(figsize=(15, 6))
+
+    ax1 = fig.add_subplot(1, 2, 1)
+    t_days = np.linspace(0.0, 120.0, 700)
+    response = sim.primary_vs_secondary(t_days,
+                                         secondary_offset_days=60.0)
+    ax1.semilogy(t_days, np.maximum(response["primary"], 1.0e-3),
+                 color="tab:blue", linewidth=2.2,
+                 label=f"primary (1 deg) - peak = {sim.primary_peak:.1f}")
+    ax1.semilogy(t_days, np.maximum(response["secondary"], 1.0e-3),
+                 color="tab:red", linewidth=2.2,
+                 label=f"secondary (2 deg) - peak = {sim.secondary_peak:.0f}")
+    ax1.semilogy(t_days, np.maximum(response["total"], 1.0e-3),
+                 color="black", linewidth=1.4, linestyle="--",
+                 alpha=0.6, label="total (1 deg + 2 deg)")
+
+    ax1.axvline(0.0, color="gray", linestyle=":", linewidth=1.2)
+    ax1.axvline(60.0, color="gray", linestyle=":", linewidth=1.2)
+    ax1.text(0.5, 50.0, "1 deg exposure", rotation=90,
+             color="gray", fontsize=8, va="center")
+    ax1.text(60.5, 50.0, "2 deg exposure", rotation=90,
+             color="gray", fontsize=8, va="center")
+
+    ax1.set_xlabel("time [days]")
+    ax1.set_ylabel("antibody titer [a.u., log scale]")
+    ax1.set_ylim(1.0e-2, 5.0e2)
+    ax1.set_title(
+        f"Primary vs secondary response\n"
+        f"latency: 1 deg = {sim.primary_latency_days:.0f} d, "
+        f"2 deg = {sim.secondary_latency_days:.1f} d; "
+        f"2 deg/1 deg peak = {sim.secondary_peak/sim.primary_peak:.0f}x"
+    )
+    ax1.legend(loc="upper left", fontsize=9, framealpha=0.92)
+    ax1.grid(True, alpha=0.25, which="both")
+
+    ax2 = fig.add_subplot(1, 2, 2)
+    t_sir = np.linspace(0.0, 30.0, 600)
+    sir = sim.sir_immune_response(t_sir, P0=1.0, A0=0.0)
+    ax2.plot(t_sir, sir["P"], color="tab:red", linewidth=2.2,
+             label="pathogen P(t)")
+    ax2.plot(t_sir, sir["A"], color="tab:blue", linewidth=2.2,
+             label="antibody A(t)")
+    t_p_peak = t_sir[int(np.argmax(sir["P"]))]
+    t_a_peak = t_sir[int(np.argmax(sir["A"]))]
+    ax2.axvline(t_p_peak, color="tab:red", linestyle=":",
+                linewidth=1.0, alpha=0.7)
+    ax2.axvline(t_a_peak, color="tab:blue", linestyle=":",
+                linewidth=1.0, alpha=0.7)
+    ax2.text(t_p_peak + 0.2, sir["P"].max() * 0.95,
+             f"P peak\nt = {t_p_peak:.1f} d",
+             color="tab:red", fontsize=8)
+    ax2.text(t_a_peak + 0.2, sir["A"].max() * 0.95,
+             f"A peak\nt = {t_a_peak:.1f} d",
+             color="tab:blue", fontsize=8)
+    ax2.set_xlabel("time [days]")
+    ax2.set_ylabel("concentration [a.u.]")
+    ax2.set_title(
+        "SIR-like coupled dynamics\n"
+        "dP/dt = +alpha P - beta P A;  "
+        "dA/dt = +gamma P - delta A"
+    )
+    ax2.legend(loc="upper right", fontsize=9, framealpha=0.92)
+    ax2.grid(True, alpha=0.25)
+
+    fig.suptitle(
+        "Adaptive immune response from substrate: "
+        "memory yields the 100x secondary boost",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "79_immune_response.png"))
+
+    return out
+
+
+def render_ecosystem() -> list[str]:
+    """Produce 80_lotka_volterra.png and 81_food_web.png.
+
+    80: Two panels.  Left -- predator-prey timeseries N(t), P(t) for the
+        canonical Lotka-Volterra system (alpha, beta, delta, gamma) with
+        small-amplitude period T = 2 pi / sqrt(alpha gamma).  Right --
+        phase portrait showing closed orbits at three different initial
+        amplitudes around the interior equilibrium (gamma/delta,
+        alpha/beta).
+    81: Directed food-web visualisation.  Left -- a 4-level linear food
+        chain (basal -> top predator) with edges drawn from prey to
+        predator.  Right -- May-Wigner stability scan: fraction of
+        random N=30 webs that are unstable as a function of the
+        complexity parameter sigma * sqrt(N C); the May-Wigner
+        threshold sits at complexity = 1.
+    """
+    from src.stiff_medium.ecosystem_substrate import (
+        EcosystemGeometry,
+        EcosystemSimulator,
+    )
+    out: list[str] = []
+
+    # ===== 80: Lotka-Volterra timeseries + phase portrait =============
+    alpha, beta, delta, gamma = 1.0, 0.1, 0.075, 1.5
+    sim = EcosystemSimulator()
+    N_eq, P_eq = sim.lotka_volterra_equilibrium(alpha, beta, delta, gamma)
+    period_lin = sim.lotka_volterra_period(alpha=alpha, gamma=gamma)
+
+    fig = plt.figure(figsize=(14, 6))
+
+    # Left: timeseries
+    ax1 = fig.add_subplot(1, 2, 1)
+    t, N, P = sim.integrate_lotka_volterra(
+        N0=40.0, P0=9.0,
+        alpha=alpha, beta=beta, delta=delta, gamma=gamma,
+        t_end=60.0, dt=0.005,
+    )
+    ax1.plot(t, N, "g-", linewidth=1.6, label="prey N(t)")
+    ax1.plot(t, P, "r-", linewidth=1.6, label="predator P(t)")
+    ax1.axhline(N_eq, color="green", linestyle=":", alpha=0.6,
+                label=f"N* = γ/δ = {N_eq:.1f}")
+    ax1.axhline(P_eq, color="red", linestyle=":", alpha=0.6,
+                label=f"P* = α/β = {P_eq:.1f}")
+    ax1.set_xlabel("time t [arb. units]")
+    ax1.set_ylabel("population")
+    ax1.set_title(
+        f"Lotka-Volterra oscillation\n"
+        f"α={alpha}, β={beta}, δ={delta}, γ={gamma}; "
+        f"T_lin = 2π/√(αγ) = {period_lin:.2f}"
+    )
+    ax1.legend(loc="upper right", fontsize=9, framealpha=0.85)
+    ax1.grid(True, alpha=0.3)
+
+    # Right: phase portrait at three amplitudes
+    ax2 = fig.add_subplot(1, 2, 2)
+    init_conditions = [
+        (N_eq * 1.05, P_eq * 1.00),
+        (N_eq * 1.30, P_eq * 1.00),
+        (N_eq * 1.80, P_eq * 1.00),
+    ]
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c"]
+    for (n0, p0), c in zip(init_conditions, colors):
+        _, Nt, Pt = sim.integrate_lotka_volterra(
+            N0=n0, P0=p0,
+            alpha=alpha, beta=beta, delta=delta, gamma=gamma,
+            t_end=40.0, dt=0.005,
+        )
+        ax2.plot(Nt, Pt, color=c, linewidth=1.4, alpha=0.9,
+                 label=f"N₀ = {n0:.0f}")
+
+    # Vector field arrows
+    Ngrid = np.linspace(2.0, max(75.0, N_eq * 2.5), 15)
+    Pgrid = np.linspace(2.0, max(25.0, P_eq * 2.5), 15)
+    Ng, Pg = np.meshgrid(Ngrid, Pgrid)
+    dNg = alpha * Ng - beta * Ng * Pg
+    dPg = delta * Ng * Pg - gamma * Pg
+    norm = np.sqrt(dNg ** 2 + dPg ** 2)
+    norm[norm == 0] = 1.0
+    ax2.quiver(Ng, Pg, dNg / norm, dPg / norm,
+               color="gray", alpha=0.45,
+               scale=35, width=0.0028, headwidth=3.5)
+    ax2.scatter([N_eq], [P_eq], s=120, marker="*",
+                c="black", zorder=8,
+                label=f"equilibrium (N*, P*) = ({N_eq:.1f}, {P_eq:.1f})")
+    ax2.set_xlabel("prey N")
+    ax2.set_ylabel("predator P")
+    ax2.set_title("Phase portrait: closed orbits + vector field")
+    ax2.legend(loc="upper right", fontsize=9, framealpha=0.85)
+    ax2.grid(True, alpha=0.3)
+    ax2.set_xlim(0.0, Ngrid[-1])
+    ax2.set_ylim(0.0, Pgrid[-1])
+
+    fig.suptitle(
+        "Predator-prey dynamics from substrate: "
+        "Lotka-Volterra invariant on a closed orbit",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "80_lotka_volterra.png"))
+
+    # ===== 81: Food web + May-Wigner stability =========================
+    fig = plt.figure(figsize=(14, 6))
+
+    # Left: 4-level linear food chain
+    ax1 = fig.add_subplot(1, 2, 1)
+    chain = EcosystemGeometry.linear_food_chain(
+        n_levels=5, link_strength=0.4,
+    )
+    pos = chain.node_positions_2d()
+    # Tweak x positions for clearer single-column chain
+    for i in range(chain.n_species):
+        pos[i, 0] = 0.0
+
+    sim_chain = EcosystemSimulator(geometry=chain)
+    chain_evals = sim_chain.stability_eigenvalues()
+    chain_lambda_max = float(np.max(np.real(chain_evals)))
+    chain_stable = chain_lambda_max < 0.0
+
+    edges = chain.edges()
+    for src, tgt, weight in edges:
+        x0, y0 = pos[src]
+        x1, y1 = pos[tgt]
+        # Slight horizontal offset to separate up/down arrows
+        sign = +1 if y1 > y0 else -1
+        offset = 0.18 * sign
+        color = "tab:blue" if weight > 0.0 else "tab:red"
+        ax1.annotate(
+            "",
+            xy=(x1 + offset, y1 - 0.12 * np.sign(y1 - y0)),
+            xytext=(x0 + offset, y0 + 0.12 * np.sign(y1 - y0)),
+            arrowprops={
+                "arrowstyle": "->", "lw": 1.6,
+                "color": color, "alpha": 0.85,
+            },
+        )
+
+    node_colors = ["#9ec27a", "#f8e08e", "#f4a259", "#e76f51", "#702632"]
+    for i in range(chain.n_species):
+        ax1.scatter([pos[i, 0]], [pos[i, 1]], s=900,
+                    c=node_colors[i % len(node_colors)],
+                    edgecolors="black", linewidths=1.5, zorder=4)
+        ax1.text(pos[i, 0], pos[i, 1],
+                 f"L{i+1}\n{chain.species_names[i]}",
+                 ha="center", va="center", fontsize=9,
+                 fontweight="bold", zorder=5)
+
+    ax1.text(0.6, chain.n_species + 0.1,
+             ("predator gains" if True else ""),
+             fontsize=8, color="tab:blue")
+    ax1.text(-0.85, chain.n_species + 0.1,
+             ("prey loses" if True else ""),
+             fontsize=8, color="tab:red")
+
+    ax1.set_xlim(-1.4, 1.4)
+    ax1.set_ylim(0.4, chain.n_species + 0.7)
+    ax1.set_aspect("auto")
+    ax1.set_xlabel("(no horizontal axis -- single chain)")
+    ax1.set_ylabel("trophic level")
+    stable_str = ("STABLE" if chain_stable else "UNSTABLE")
+    ax1.set_title(
+        f"Linear food chain (5 levels): "
+        f"max Re λ = {chain_lambda_max:+.3f} -> {stable_str}\n"
+        f"blue = predator gains, red = prey loses"
+    )
+    ax1.grid(True, alpha=0.25, axis="y")
+
+    # Right: May-Wigner stability transition
+    ax2 = fig.add_subplot(1, 2, 2)
+    N_mw = 30
+    C_mw = 0.3
+    sigma_c = sim_chain.may_wigner_threshold(N_mw, C_mw)
+    complexity_grid = np.linspace(0.1, 3.5, 24)
+    n_trials = 20
+    fractions: list[float] = []
+    for cmplx in complexity_grid:
+        sigma = cmplx * sigma_c
+        unstable = 0
+        for s in range(n_trials):
+            geom = EcosystemGeometry.random_food_web(
+                n_species=N_mw, connectance=C_mw,
+                sigma=sigma, seed=1000 + s,
+            )
+            sim_local = EcosystemSimulator(geometry=geom)
+            evals = sim_local.stability_eigenvalues()
+            if float(np.max(np.real(evals))) > 0.0:
+                unstable += 1
+        fractions.append(unstable / n_trials)
+    fractions_arr = np.asarray(fractions)
+    ax2.plot(complexity_grid, fractions_arr, "o-",
+             color="purple", linewidth=1.8, markersize=6,
+             label=f"random web N={N_mw}, C={C_mw}, "
+                   f"{n_trials} trials/point")
+    ax2.axvline(1.0, color="red", linestyle="--", linewidth=1.5,
+                label="May-Wigner threshold σ√(NC)=1")
+    ax2.axhline(0.5, color="gray", linestyle=":", alpha=0.5)
+    ax2.set_xlabel(r"complexity $\sigma\sqrt{NC}$")
+    ax2.set_ylabel("fraction of unstable webs")
+    ax2.set_ylim(-0.05, 1.05)
+    ax2.set_title(
+        "May-Wigner stability transition\n"
+        "(May 1972 Nature: 'will a large complex system be stable?')"
+    )
+    ax2.legend(loc="lower right", fontsize=9, framealpha=0.85)
+    ax2.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Food-web stability from substrate: "
+        "trophic chain + May-Wigner random-matrix transition",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "81_food_web.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Epidemiology (SIR / SEIR) -- 88 + 89
+# ---------------------------------------------------------------------------
+
+def render_epidemiology() -> list[str]:
+    """Produce 88_sir_dynamics.png and 89_r0_threshold.png.
+
+    88: Four-panel SIR/SEIR overview.  S, I, R curves at the canonical
+        R_0 = 2.5; I(t) for several R_0; SIR vs SEIR delay due to the
+        latent compartment; vaccination strategy comparison.
+    89: Phase diagram of (R_0, vaccinated-fraction) showing simulated
+        final attack rate, with the herd-immunity boundary 1 - 1/R_0
+        overlaid; plus the closed-form i_max(R_0), R_∞(R_0), H(R_0).
+    """
+    from src.stiff_medium.epidemiology_substrate import (
+        D_INFECTIOUS_DAYS_DEFAULT,
+        EpidemiologyGeometry,
+        EpidemiologySimulator,
+        final_size_fraction,
+        herd_immunity_threshold,
+        peak_prevalence_fraction,
+        r0_sweep,
+    )
+
+    out: list[str] = []
+
+    # ---------------- 88: SIR dynamics for varying R_0 -------------------
+    R0_values = [1.2, 1.8, 2.5, 3.5]
+    runs = r0_sweep(np.array(R0_values),
+                    D_infectious_days=D_INFECTIOUS_DAYS_DEFAULT,
+                    N=1_000_000,
+                    duration_days=180.0,
+                    dt_days=0.1,
+                    I0_fraction=1.0e-5)
+
+    geom_ref = EpidemiologyGeometry(
+        N=1_000_000, R0=2.5,
+        D_infectious_days=D_INFECTIOUS_DAYS_DEFAULT,
+    )
+    sim_ref = EpidemiologySimulator(
+        geometry=geom_ref, dt_days=0.1, duration_days=180.0,
+    )
+    res_ref = sim_ref.simulate_sir(I0_fraction=1.0e-5)
+    res_seir = sim_ref.simulate_seir(E0_fraction=1.0e-5)
+
+    fig = plt.figure(figsize=(13, 9))
+
+    # Top-left: canonical S, I, R curves at R_0 = 2.5
+    ax_sir = plt.subplot2grid((2, 2), (0, 0))
+    ax_sir.plot(res_ref["t_days"], res_ref["S_frac"],
+                color="tab:blue", linewidth=2.0, label="S (susceptible)")
+    ax_sir.plot(res_ref["t_days"], res_ref["I_frac"],
+                color="tab:red", linewidth=2.2, label="I (infectious)")
+    ax_sir.plot(res_ref["t_days"], res_ref["R_frac"],
+                color="tab:green", linewidth=2.0, label="R (recovered)")
+    H = herd_immunity_threshold(2.5)
+    ax_sir.axhline(H, color="gray", linestyle="--", linewidth=0.8,
+                   label=f"H = 1 - 1/R_0 = {H:.2f}")
+    i_max_th = peak_prevalence_fraction(2.5)
+    ax_sir.axhline(i_max_th, color="tab:red", linestyle=":",
+                   linewidth=0.8, alpha=0.6,
+                   label=f"theory I_max/N = {i_max_th:.3f}")
+    ax_sir.set_xlabel("t [days]")
+    ax_sir.set_ylabel("compartment fraction")
+    ax_sir.set_title(
+        f"SIR dynamics (R_0 = 2.5, D_inf = "
+        f"{D_INFECTIOUS_DAYS_DEFAULT:.0f} d)\n"
+        f"β = {res_ref['beta']:.3f}/d, γ = {res_ref['gamma']:.3f}/d"
+    )
+    ax_sir.legend(loc="center right", fontsize=8)
+    ax_sir.grid(True, alpha=0.3)
+    ax_sir.set_ylim(-0.02, 1.02)
+    ax_sir.set_xlim(0, sim_ref.duration_days)
+
+    # Top-right: I(t) for several R_0
+    ax_R0 = plt.subplot2grid((2, 2), (0, 1))
+    cmap = plt.cm.viridis(np.linspace(0.15, 0.85, len(R0_values)))
+    for color, R0 in zip(cmap, R0_values):
+        res = runs[float(R0)]
+        ax_R0.plot(res["t_days"], res["I_frac"], color=color,
+                   linewidth=1.8,
+                   label=f"R_0 = {R0:.1f}, peak={sim_ref.peak_infected_fraction(res):.3f}")
+    ax_R0.set_xlabel("t [days]")
+    ax_R0.set_ylabel("I(t) / N")
+    ax_R0.set_title(
+        "Infectious fraction I(t) for varying R_0\n"
+        "(higher R_0 -> earlier, taller peak)"
+    )
+    ax_R0.legend(loc="upper right", fontsize=8)
+    ax_R0.grid(True, alpha=0.3)
+    ax_R0.set_xlim(0, sim_ref.duration_days)
+
+    # Bottom-left: SIR vs SEIR comparison (latency delays peak)
+    ax_seir = plt.subplot2grid((2, 2), (1, 0))
+    ax_seir.plot(res_ref["t_days"], res_ref["I_frac"],
+                 color="tab:red", linewidth=2.0, label="I (SIR)")
+    ax_seir.plot(res_seir["t_days"], res_seir["I_frac"],
+                 color="tab:purple", linewidth=2.0, linestyle="--",
+                 label="I (SEIR)")
+    ax_seir.plot(res_seir["t_days"], res_seir["E_frac"],
+                 color="tab:orange", linewidth=1.6,
+                 label="E (SEIR exposed)")
+    t_peak_sir = sim_ref.peak_time_days(res_ref)
+    t_peak_seir = sim_ref.peak_time_days(res_seir)
+    ax_seir.axvline(t_peak_sir, color="tab:red", linestyle=":",
+                    linewidth=0.8, alpha=0.7)
+    ax_seir.axvline(t_peak_seir, color="tab:purple", linestyle=":",
+                    linewidth=0.8, alpha=0.7)
+    ax_seir.set_xlabel("t [days]")
+    ax_seir.set_ylabel("compartment fraction")
+    ax_seir.set_title(
+        f"SIR vs SEIR (R_0 = 2.5)\n"
+        f"latency τ_E = 3 d delays peak: SIR @ {t_peak_sir:.1f} d, "
+        f"SEIR @ {t_peak_seir:.1f} d"
+    )
+    ax_seir.legend(loc="upper right", fontsize=8)
+    ax_seir.grid(True, alpha=0.3)
+    ax_seir.set_xlim(0, sim_ref.duration_days)
+
+    # Bottom-right: vaccination strategies
+    ax_vac = plt.subplot2grid((2, 2), (1, 1))
+    coverage = np.linspace(0.0, 0.9, 19)
+    attack_uniform = []
+    attack_targeted = []
+    attack_ring = []
+    for f in coverage:
+        r_u = sim_ref.vaccinate_uniform(fraction=float(f))
+        r_t = sim_ref.vaccinate_targeted(fraction=float(f),
+                                         degree_amplification=1.5)
+        r_r = sim_ref.vaccinate_ring(fraction=float(f), suppression=0.6)
+        attack_uniform.append(sim_ref.attack_rate(r_u))
+        attack_targeted.append(sim_ref.attack_rate(r_t))
+        attack_ring.append(sim_ref.attack_rate(r_r))
+    ax_vac.plot(coverage * 100.0, np.array(attack_uniform) * 100.0,
+                "o-", color="tab:blue", label="uniform")
+    ax_vac.plot(coverage * 100.0, np.array(attack_targeted) * 100.0,
+                "s-", color="tab:green", label="targeted (high-degree)")
+    ax_vac.plot(coverage * 100.0, np.array(attack_ring) * 100.0,
+                "^-", color="tab:orange", label="ring/contact NPI")
+    ax_vac.axvline(H * 100.0, color="gray", linestyle="--", linewidth=0.9,
+                   label=f"H = {H*100:.0f}% (herd)")
+    ax_vac.set_xlabel("vaccination coverage [%]")
+    ax_vac.set_ylabel("final attack rate [%]")
+    ax_vac.set_title(
+        "Vaccination strategies (R_0 = 2.5)\n"
+        "targeted reduces β faster than uniform"
+    )
+    ax_vac.legend(loc="upper right", fontsize=8)
+    ax_vac.grid(True, alpha=0.3)
+    ax_vac.set_xlim(0, 100)
+    ax_vac.set_ylim(-2, 100)
+
+    fig.suptitle(
+        "Epidemic dynamics from substrate: SIR / SEIR / vaccination\n"
+        "(B3 ontology: agent = cell; infection = saturation flip; "
+        "recovery = relax/lock)",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "88_sir_dynamics.png"))
+
+    # ---------------- 89: R_0 phase diagram ------------------------------
+    fig = plt.figure(figsize=(13, 6))
+
+    # Left: herd-immunity boundary in (R_0, vaccinated) space + filled
+    # final-attack-rate heatmap from simulation
+    ax_phase = plt.subplot(1, 2, 1)
+    R0_grid = np.linspace(0.5, 5.0, 24)
+    vax_grid = np.linspace(0.0, 0.95, 24)
+    AR = np.zeros((vax_grid.size, R0_grid.size))   # rows: vax, cols: R_0
+    for i, v in enumerate(vax_grid):
+        for j, R0 in enumerate(R0_grid):
+            geom_grid = EpidemiologyGeometry(
+                N=200_000, R0=float(R0),
+                D_infectious_days=D_INFECTIOUS_DAYS_DEFAULT,
+            )
+            sim_grid = EpidemiologySimulator(
+                geometry=geom_grid, dt_days=0.25, duration_days=200.0,
+            )
+            res = sim_grid.simulate_sir(I0_fraction=1.0e-4,
+                                        vaccinated_fraction=float(v))
+            AR[i, j] = sim_grid.attack_rate(res)
+    im = ax_phase.pcolormesh(R0_grid, vax_grid * 100.0, AR * 100.0,
+                             shading="auto", cmap="magma",
+                             vmin=0, vmax=100)
+    cbar = plt.colorbar(im, ax=ax_phase)
+    cbar.set_label("final attack rate [%]")
+    # Herd-immunity boundary v* = 1 - 1/R_0
+    R0_curve = np.linspace(1.0, 5.0, 200)
+    v_star = (1.0 - 1.0 / R0_curve) * 100.0
+    ax_phase.plot(R0_curve, v_star, "-", color="cyan", linewidth=2.4,
+                  label="H = 1 - 1/R_0 (herd-immunity)")
+    # R_0 = 1 critical line
+    ax_phase.axvline(1.0, color="white", linestyle=":", linewidth=1.5,
+                     alpha=0.7, label="R_0 = 1 (epidemic threshold)")
+    ax_phase.set_xlabel("basic reproduction number R_0")
+    ax_phase.set_ylabel("vaccinated coverage [%]")
+    ax_phase.set_title(
+        "Phase diagram: epidemic vs no-epidemic regions\n"
+        "(SIR final attack rate over (R_0, vax) grid)"
+    )
+    ax_phase.legend(loc="lower right", fontsize=9)
+    ax_phase.set_xlim(R0_grid[0], R0_grid[-1])
+    ax_phase.set_ylim(0, 95)
+
+    # Right: closed-form i_max(R_0), final-size R_∞(R_0), and herd-threshold
+    ax_th = plt.subplot(1, 2, 2)
+    R0_th = np.linspace(0.0, 8.0, 400)
+    i_max_arr = np.array([peak_prevalence_fraction(r) for r in R0_th])
+    R_inf_arr = np.array([final_size_fraction(r) for r in R0_th])
+    H_arr = np.array([herd_immunity_threshold(r) for r in R0_th])
+    ax_th.plot(R0_th, i_max_arr * 100.0, "-",
+               color="tab:red", linewidth=2.0,
+               label="peak prevalence I_max/N")
+    ax_th.plot(R0_th, R_inf_arr * 100.0, "-",
+               color="tab:green", linewidth=2.0,
+               label="final size R_∞/N")
+    ax_th.plot(R0_th, H_arr * 100.0, "--",
+               color="tab:blue", linewidth=2.0,
+               label="herd-immunity H = 1 - 1/R_0")
+    R0_mark = 2.5
+    ax_th.scatter([R0_mark], [peak_prevalence_fraction(R0_mark) * 100.0],
+                  s=80, c="tab:red", zorder=5)
+    ax_th.scatter([R0_mark], [final_size_fraction(R0_mark) * 100.0],
+                  s=80, c="tab:green", zorder=5)
+    ax_th.scatter([R0_mark], [herd_immunity_threshold(R0_mark) * 100.0],
+                  s=80, c="tab:blue", zorder=5)
+    ax_th.axvline(R0_mark, color="gray", linestyle=":", linewidth=0.8,
+                  alpha=0.7,
+                  label=f"R_0 = {R0_mark} (canonical)")
+    ax_th.axvline(1.0, color="black", linestyle="-", linewidth=1.0,
+                  alpha=0.4, label="R_0 = 1 threshold")
+    ax_th.set_xlabel("basic reproduction number R_0")
+    ax_th.set_ylabel("[% of population]")
+    ax_th.set_title(
+        "Closed-form epidemic observables vs R_0\n"
+        "Kermack-McKendrick (1927) + Anderson-May (1991)"
+    )
+    ax_th.legend(loc="lower right", fontsize=8)
+    ax_th.grid(True, alpha=0.3)
+    ax_th.set_xlim(0, 8)
+    ax_th.set_ylim(0, 100)
+
+    fig.suptitle(
+        "R_0 threshold + herd-immunity phase diagram\n"
+        "(B3 ontology: epidemic threshold = saturation phase transition)",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "89_r0_threshold.png"))
+
+    return out
+
+
+def render_evolution() -> list[str]:
+    """Produce 86_fitness_landscape.png and 87_speciation.png.
+
+    86: 2D fitness landscape with adaptive walks.
+        Left:   filled-contour fitness W(x,y) over a 2D phenotype plane
+                with three Gaussian peaks; multiple stochastic adaptive
+                walks (gradient ascent + noise) ascend from random starts
+                and converge to local maxima.  Peak locations marked with
+                stars; walks coloured by trial.
+        Right:  Wright-Fisher allele-frequency trajectories under three
+                selection regimes: neutral (drift only, s = 0), beneficial
+                (s = +0.05, fixation), deleterious (s = -0.05, loss).
+                Multiple replicate trajectories per regime with the
+                Kimura fixation probability annotated.
+    87: Divergence over time with reproductive isolation.
+        Left:   mean allele-frequency trajectories of two daughter
+                populations diverging on opposite sides of selection
+                (s_A = +0.02, s_B = -0.02) over 1500 generations.
+                Shaded band = +/- one standard deviation across loci.
+        Centre: reproductive isolation I(t) growing from 0 to 1 with
+                Bateson-Dobzhansky-Muller exponential approach;
+                speciation threshold I = 0.5 marked.
+        Right:  fixation-probability curve P_fix(s, N) (Kimura)
+                versus 2s (Haldane), with empirical points from
+                Monte-Carlo Wright-Fisher trials.
+    """
+    import matplotlib.patheffects as patheffects
+
+    from src.stiff_medium.evolution_substrate import (
+        SPECIATION_THRESHOLD,
+        EvolutionGeometry,
+        EvolutionSimulator,
+        kimura_fixation_probability,
+    )
+    out: list[str] = []
+
+    # ---- 86: 2D fitness landscape with adaptive walks --------------------
+    geom = EvolutionGeometry(
+        landscape_peaks=[
+            ((-2.5, -2.0), 1.2, 1.1),
+            ((+2.5, +2.5), 1.6, 0.9),
+            ((+2.0, -2.0), 1.0, 1.0),
+        ],
+    )
+    sim = EvolutionSimulator(
+        geometry=geom, population_size=1000, selection_coefficient=0.0,
+    )
+
+    fig = plt.figure(figsize=(15, 7))
+
+    # --- Left panel: fitness landscape + adaptive walks
+    ax1 = fig.add_subplot(1, 2, 1)
+    X, Y, W = geom.landscape_grid(x_range=(-5.0, 5.0), y_range=(-5.0, 5.0), n=120)
+    cf = ax1.contourf(X, Y, W, levels=20, cmap="viridis")
+    cbar = fig.colorbar(cf, ax=ax1, shrink=0.85)
+    cbar.set_label("Wrightian fitness W(x,y)", fontsize=10)
+
+    # mark peaks
+    for (cx, cy), h, w in geom.landscape_peaks:
+        ax1.scatter([cx], [cy], marker="*", s=320, c="white",
+                    edgecolors="black", linewidths=1.5, zorder=6)
+        ax1.text(cx + 0.25, cy + 0.25, f"W={h:.1f}", fontsize=8,
+                 color="white", fontweight="bold",
+                 path_effects=[patheffects.withStroke(
+                     linewidth=2.0, foreground="black")])
+
+    # several adaptive walks from random starts
+    rng = np.random.default_rng(11)
+    starts = [(-4.0, 4.0), (4.0, -4.0), (-4.5, -4.0),
+              (0.0, 4.5), (4.5, 0.5), (-4.0, 0.0)]
+    walk_colors = plt.cm.autumn(np.linspace(0.05, 0.95, len(starts)))
+    for k, (sx, sy) in enumerate(starts):
+        path = sim.adaptive_walk(
+            start=(sx, sy), step_size=0.06, n_steps=500,
+            noise=0.04, seed=int(rng.integers(0, 1_000_000)),
+        )
+        ax1.plot(path[:, 0], path[:, 1], "-",
+                 color=walk_colors[k], linewidth=1.5, alpha=0.85,
+                 zorder=5)
+        ax1.scatter([sx], [sy], marker="o", s=70,
+                    facecolor=walk_colors[k], edgecolor="black",
+                    linewidth=1.0, zorder=6)
+        ax1.scatter([path[-1, 0]], [path[-1, 1]], marker="X", s=110,
+                    facecolor=walk_colors[k], edgecolor="black",
+                    linewidth=1.2, zorder=7)
+    ax1.set_xlim(-5.0, 5.0)
+    ax1.set_ylim(-5.0, 5.0)
+    ax1.set_xlabel("phenotype x", fontsize=10)
+    ax1.set_ylabel("phenotype y", fontsize=10)
+    ax1.set_title(
+        f"Fitness landscape ({geom.n_landscape_peaks()} Gaussian peaks)\n"
+        "white * = peak,  o = walk start,  X = walk end",
+        fontsize=11,
+    )
+    ax1.set_aspect("equal", adjustable="box")
+    ax1.grid(False)
+
+    # --- Right panel: Wright-Fisher trajectories under three regimes
+    ax2 = fig.add_subplot(1, 2, 2)
+    p0 = 0.5
+    n_gen = 200
+    n_repl = 18
+    regimes = [
+        ("neutral  (s = 0)",       0.0,    "tab:gray"),
+        ("beneficial (s = +0.05)", +0.05,  "tab:green"),
+        ("deleterious (s = -0.05)", -0.05, "tab:red"),
+    ]
+    for label, s, color in regimes:
+        sim.selection_coefficient = s
+        sim.population_size = 100
+        for k in range(n_repl):
+            traj = sim.wright_fisher_trajectory(
+                p0=p0, n_generations=n_gen,
+                seed=10000 + k + int(1e4 * (s + 1)),
+            )
+            ax2.plot(np.arange(n_gen + 1), traj, "-",
+                     color=color, alpha=0.40, linewidth=1.0)
+        # one bold representative
+        bold = sim.wright_fisher_trajectory(
+            p0=p0, n_generations=n_gen, seed=999 + int(1e4 * (s + 1)),
+        )
+        p_fix = (kimura_fixation_probability(s, 100)
+                 if s != 0 else 1.0 / (2 * 100))
+        ax2.plot(np.arange(n_gen + 1), bold, "-",
+                 color=color, linewidth=2.5, alpha=1.0,
+                 label=f"{label}   P_fix = {p_fix:.3g}")
+    ax2.axhline(0.0, color="black", linewidth=0.6, alpha=0.5)
+    ax2.axhline(1.0, color="black", linewidth=0.6, alpha=0.5)
+    ax2.set_ylim(-0.05, 1.05)
+    ax2.set_xlim(0, n_gen)
+    ax2.set_xlabel("generation t", fontsize=10)
+    ax2.set_ylabel("allele-A frequency p", fontsize=10)
+    ax2.set_title(
+        "Wright-Fisher trajectories (N = 100, p_0 = 0.5, 18 replicates)\n"
+        "neutral drift vs beneficial vs deleterious selection",
+        fontsize=11,
+    )
+    ax2.legend(fontsize=8, loc="center right")
+    ax2.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Evolutionary dynamics from substrate: fitness landscape + drift + selection",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "86_fitness_landscape.png"))
+
+    # ---- 87: Speciation: divergence over time + reproductive isolation ---
+    geom2 = EvolutionGeometry(mutation_rate=1.0e-4)
+    sim2 = EvolutionSimulator(
+        geometry=geom2, population_size=400, selection_coefficient=0.0,
+    )
+    n_loci = 40
+    gens, p_A, p_B, isolation = sim2.divergence_simulation(
+        n_generations=1500, n_loci=n_loci,
+        s_pop_A=+0.02, s_pop_B=-0.02, k=4.0, seed=2026,
+    )
+
+    fig2 = plt.figure(figsize=(16, 5.5))
+
+    # --- Left: mean allele frequency over time, with std band
+    axL = fig2.add_subplot(1, 3, 1)
+    mean_A = p_A.mean(axis=1)
+    std_A = p_A.std(axis=1)
+    mean_B = p_B.mean(axis=1)
+    std_B = p_B.std(axis=1)
+    axL.plot(gens, mean_A, "-", color="tab:blue", linewidth=2.0,
+             label="Population A  (s = +0.02)")
+    axL.fill_between(gens, mean_A - std_A, mean_A + std_A,
+                     color="tab:blue", alpha=0.20)
+    axL.plot(gens, mean_B, "-", color="tab:orange", linewidth=2.0,
+             label="Population B  (s = -0.02)")
+    axL.fill_between(gens, mean_B - std_B, mean_B + std_B,
+                     color="tab:orange", alpha=0.20)
+    axL.axhline(0.5, color="black", linewidth=0.6,
+                linestyle="--", alpha=0.5,
+                label="ancestral p = 0.5")
+    axL.set_ylim(0.0, 1.0)
+    axL.set_xlim(gens.min(), gens.max())
+    axL.set_xlabel("generation t", fontsize=10)
+    axL.set_ylabel("mean allele-A frequency", fontsize=10)
+    axL.set_title(
+        f"Allele-frequency divergence ({n_loci} loci, N = {sim2.population_size})\n"
+        "shaded = +/- 1 std across loci",
+        fontsize=11,
+    )
+    axL.legend(fontsize=8, loc="center right")
+    axL.grid(True, alpha=0.3)
+
+    # --- Centre: reproductive isolation over time
+    axC = fig2.add_subplot(1, 3, 2)
+    axC.plot(gens, isolation, "-", color="tab:purple", linewidth=2.5,
+             label="I(t) = 1 - exp(-k D(t))")
+    axC.axhline(SPECIATION_THRESHOLD, color="tab:red",
+                linestyle="--", linewidth=1.5, alpha=0.85,
+                label=f"speciation threshold I = {SPECIATION_THRESHOLD}")
+    # mark crossing time
+    cross_idx = int(np.argmax(isolation >= SPECIATION_THRESHOLD))
+    if isolation[cross_idx] >= SPECIATION_THRESHOLD:
+        t_cross = int(gens[cross_idx])
+        axC.scatter([t_cross], [isolation[cross_idx]],
+                    s=150, c="tab:red", edgecolors="black",
+                    linewidths=1.2, zorder=5)
+        axC.annotate(
+            f"speciation @ t = {t_cross}",
+            xy=(t_cross, isolation[cross_idx]),
+            xytext=(t_cross + 70, isolation[cross_idx] - 0.20),
+            fontsize=9, color="tab:red",
+            arrowprops=dict(arrowstyle="->", color="tab:red", lw=1.0),
+        )
+    axC.set_xlim(gens.min(), gens.max())
+    axC.set_ylim(0.0, 1.05)
+    axC.set_xlabel("generation t", fontsize=10)
+    axC.set_ylabel("reproductive isolation I", fontsize=10)
+    axC.set_title(
+        "Bateson-Dobzhansky-Muller isolation\n"
+        "I(t) = 1 - exp(-k D(t)),  k = 4",
+        fontsize=11,
+    )
+    axC.legend(fontsize=9, loc="lower right")
+    axC.grid(True, alpha=0.3)
+
+    # --- Right: fixation probability curve, Kimura vs Haldane vs sims
+    axR = fig2.add_subplot(1, 3, 3)
+    s_grid = np.linspace(0.0, 0.05, 80)
+    N_eval = 200
+    p_kim = np.array([kimura_fixation_probability(s, N_eval) for s in s_grid])
+    p_hal = 2.0 * s_grid
+    axR.plot(s_grid, p_kim, "-", color="tab:blue", linewidth=2.0,
+             label=f"Kimura (1962), N = {N_eval}")
+    axR.plot(s_grid, p_hal, "--", color="tab:orange", linewidth=2.0,
+             label="Haldane (1927):  P_fix = 2s")
+    axR.axhline(1.0 / (2.0 * N_eval), color="tab:gray",
+                linestyle=":", linewidth=1.2,
+                label=f"neutral fixation 1/(2N) = {1/(2*N_eval):.4f}")
+
+    # Monte-Carlo points
+    sim3 = EvolutionSimulator(
+        geometry=EvolutionGeometry(mutation_rate=0.0),
+        population_size=N_eval,
+    )
+    s_samples = [0.005, 0.01, 0.02, 0.04]
+    p_emp = []
+    for s in s_samples:
+        p_emp.append(sim3.empirical_fixation_probability(
+            s=s, N=N_eval, n_trials=2000, max_generations=8000,
+            seed=42 + int(1000 * s),
+        ))
+    axR.scatter(s_samples, p_emp, s=110, c="tab:red", edgecolors="black",
+                linewidths=1.2, zorder=5,
+                label="Wright-Fisher (2000 trials each)")
+    axR.set_xlim(0.0, 0.05)
+    axR.set_ylim(0.0, 0.105)
+    axR.set_xlabel("selection coefficient s", fontsize=10)
+    axR.set_ylabel("fixation probability P_fix", fontsize=10)
+    axR.set_title(
+        "Fixation probability of new beneficial mutant\n"
+        "Kimura vs Haldane 2s vs Wright-Fisher Monte-Carlo",
+        fontsize=11,
+    )
+    axR.legend(fontsize=8, loc="upper left")
+    axR.grid(True, alpha=0.3)
+
+    fig2.suptitle(
+        "Speciation from substrate: divergence, isolation, fixation",
+        fontsize=12,
+    )
+    fig2.tight_layout()
+    out.append(save(fig2, "87_speciation.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Climate (radiative forcing + sensitivity) -- 82 + 83
+# ---------------------------------------------------------------------------
+
+def render_climate() -> list[str]:
+    """Produce 82_radiative_forcing.png and 83_climate_sensitivity.png.
+
+    82: Anthropogenic radiative forcing time series for CO2, CH4, N2O,
+        and aerosols from 1850 to 2100.  Logarithmic CO2 forcing dominates
+        the well-mixed greenhouse-gas budget; aerosols partially cancel
+        with negative ERF.  Annotates the present-day total RF.
+    83: Climate sensitivity curve.  Equilibrium delta-T as a function of
+        CO2 doubling number n (where C/C_ref = 2^n), using the
+        substrate-derived ECS = 3.0 K.  Shaded uncertainty band from the
+        IPCC AR6 likely range 1.5 - 4.5 K.  Annotates pre-industrial,
+        present-day, 2x and 4x reference points.
+    """
+    from src.stiff_medium.climate_substrate import (
+        CO2_PREINDUSTRIAL_PPM,
+        CO2_PRESENT_PPM,
+        ECS_CENTRAL_K,
+        ECS_LOWER_K,
+        ECS_UPPER_K,
+        ClimateGeometry,
+        ClimateSimulator,
+    )
+
+    out: list[str] = []
+
+    geom = ClimateGeometry(n_atm_layers=10)
+    sim = ClimateSimulator(geometry=geom)
+
+    # ---- 82: radiative forcing time series ----------------------------
+    fig = plt.figure(figsize=(13, 7))
+    ax = fig.add_subplot(1, 1, 1)
+
+    years = np.arange(1850, 2101, 1)
+    n_yr = len(years)
+
+    def _interp(start_year, start_val, anchors):
+        ys = np.empty(n_yr)
+        all_anchors = [(start_year, start_val)] + list(anchors)
+        for i, yr in enumerate(years):
+            placed = False
+            for j in range(len(all_anchors) - 1):
+                y0, v0 = all_anchors[j]
+                y1, v1 = all_anchors[j + 1]
+                if y0 <= yr <= y1:
+                    t = (yr - y0) / (y1 - y0) if y1 > y0 else 0.0
+                    ys[i] = v0 + t * (v1 - v0)
+                    placed = True
+                    break
+            if not placed:
+                ys[i] = all_anchors[-1][1]
+        return ys
+
+    co2_ppm = _interp(
+        1850, 285.0,
+        [(1900, 296.0), (1950, 311.0), (1980, 339.0),
+         (2000, 369.0), (2020, 415.0), (2050, 510.0), (2100, 600.0)],
+    )
+    ch4_ppb = _interp(
+        1850, 800.0,
+        [(1900, 900.0), (1950, 1150.0), (2000, 1750.0),
+         (2020, 1880.0), (2050, 2100.0), (2100, 2200.0)],
+    )
+    n2o_ppb = _interp(
+        1850, 270.0,
+        [(1950, 290.0), (2000, 316.0), (2020, 333.0),
+         (2050, 360.0), (2100, 380.0)],
+    )
+    aerosol_aod = _interp(
+        1850, 0.00,
+        [(1950, 0.04), (1980, 0.10), (2010, 0.13),
+         (2020, 0.12), (2050, 0.07), (2100, 0.04)],
+    )
+
+    rf_co2 = np.array([sim.co2_forcing_w_m2(c) for c in co2_ppm])
+    rf_ch4 = np.array([sim.ch4_forcing_w_m2(c) for c in ch4_ppb])
+    rf_n2o = np.array([sim.n2o_forcing_w_m2(c) for c in n2o_ppb])
+    rf_aer = np.array([sim.aerosol_forcing_w_m2(a) for a in aerosol_aod])
+    rf_total = rf_co2 + rf_ch4 + rf_n2o + rf_aer
+
+    ax.plot(years, rf_co2, color="darkred", lw=2.4,
+            label="CO$_2$ (5.35 ln C/C$_0$)")
+    ax.plot(years, rf_ch4, color="tab:orange", lw=2.0,
+            label="CH$_4$ (0.036 [√C - √C$_0$])")
+    ax.plot(years, rf_n2o, color="tab:purple", lw=2.0,
+            label="N$_2$O (0.12 [√C - √C$_0$])")
+    ax.plot(years, rf_aer, color="tab:blue", lw=2.0,
+            label="aerosols (-9.2 × AOD)")
+    ax.plot(years, rf_total, color="black", lw=2.8, ls="--",
+            label="net total")
+
+    ax.fill_between(years, rf_aer, 0.0, where=(rf_aer < 0),
+                    color="tab:blue", alpha=0.10)
+    ax.fill_between(years, 0.0, rf_co2, color="darkred", alpha=0.06)
+
+    ax.axvline(2020, color="gray", lw=1.0, ls=":", alpha=0.7)
+    ax.axhline(3.71, color="darkred", lw=0.8, ls=":", alpha=0.6)
+    ax.text(1855, 3.78, "CO$_2$ doubling RF = 3.71 W/m$^2$",
+            color="darkred", fontsize=9)
+    ax.axhline(0.0, color="black", lw=0.6, alpha=0.4)
+
+    idx_2020 = int(np.argmin(np.abs(years - 2020)))
+    rf_present = rf_total[idx_2020]
+    ax.scatter([2020], [rf_present], s=80, c="black", zorder=5)
+    ax.annotate(
+        f"net 2020:\n{rf_present:.2f} W/m$^2$",
+        xy=(2020, rf_present), xytext=(1955, rf_present + 1.2),
+        fontsize=9, ha="center",
+        arrowprops={"arrowstyle": "->", "color": "black", "lw": 0.8},
+    )
+
+    ax.set_xlabel("year")
+    ax.set_ylabel("radiative forcing relative to 1850 [W m$^{-2}$]")
+    ax.set_xlim(1850, 2100)
+    ax.set_title(
+        "Anthropogenic radiative forcing 1850 - 2100 (substrate-derived "
+        "$\\sigma_{SB} = \\pi^2 k_B^4 / (60 \\hbar^3 c^2)$)\n"
+        "Myhre 1998 / IPCC AR6 simplified expressions; "
+        "SSP2-4.5-style continuation"
+    )
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper left", fontsize=9, framealpha=0.92)
+
+    fig.tight_layout()
+    out.append(save(fig, "82_radiative_forcing.png"))
+
+    # ---- 83: climate sensitivity (T vs CO2 doublings + bands) ---------
+    fig = plt.figure(figsize=(13, 7))
+    ax = fig.add_subplot(1, 1, 1)
+
+    n_doublings = np.linspace(-0.5, 3.0, 200)
+    dT_central = ECS_CENTRAL_K * n_doublings
+    dT_low     = ECS_LOWER_K   * n_doublings
+    dT_high    = ECS_UPPER_K   * n_doublings
+
+    ax.fill_between(
+        n_doublings, dT_low, dT_high,
+        color="tab:red", alpha=0.18,
+        label=f"IPCC AR6 likely range ({ECS_LOWER_K:.1f} - {ECS_UPPER_K:.1f} K)",
+    )
+    ax.plot(n_doublings, dT_central, color="darkred", lw=2.6,
+            label=f"substrate ECS = {ECS_CENTRAL_K:.1f} K / doubling")
+    ax.plot(n_doublings, dT_low,  color="tab:red", lw=1.0, ls="--", alpha=0.8)
+    ax.plot(n_doublings, dT_high, color="tab:red", lw=1.0, ls="--", alpha=0.8)
+
+    refs = [
+        (CO2_PREINDUSTRIAL_PPM,         "1850\npre-industrial\n280 ppm"),
+        (CO2_PRESENT_PPM,               "2020 present\n420 ppm"),
+        (2.0 * CO2_PREINDUSTRIAL_PPM,   "2x pre-ind\n560 ppm"),
+        (4.0 * CO2_PREINDUSTRIAL_PPM,   "4x pre-ind\n1120 ppm"),
+    ]
+    for c_ppm, label in refs:
+        n = np.log2(c_ppm / CO2_PREINDUSTRIAL_PPM)
+        dT = ECS_CENTRAL_K * n
+        ax.scatter([n], [dT], s=90, c="black", zorder=5)
+        if "present" in label:
+            ax.annotate(label, xy=(n, dT), xytext=(n - 0.45, dT + 1.4),
+                        fontsize=9, ha="center",
+                        arrowprops={"arrowstyle": "->", "color": "black",
+                                    "lw": 0.7})
+        else:
+            ax.annotate(label, xy=(n, dT), xytext=(n + 0.05, dT + 0.3),
+                        fontsize=9, ha="left", va="bottom")
+
+    ax.axhline(0.0, color="black", lw=0.6, alpha=0.4)
+    ax.axvline(0.0, color="black", lw=0.6, alpha=0.4)
+
+    ax2 = ax.twiny()
+    ax2.set_xlim(ax.get_xlim())
+    ticks = [-0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+    ax2.set_xticks(ticks)
+    ax2.set_xticklabels(
+        [f"{CO2_PREINDUSTRIAL_PPM * 2**t:.0f}" for t in ticks]
+    )
+    ax2.set_xlabel("CO$_2$ concentration [ppm]")
+
+    ax.set_xlabel(
+        "CO$_2$ doublings  $n = \\log_2(C / C_{ref})$,  $C_{ref}$ = 280 ppm"
+    )
+    ax.set_ylabel("equilibrium $\\Delta T$ [K]")
+    ax.set_xlim(-0.5, 3.0)
+    ax.set_ylim(-2.5, 14.0)
+    ax.set_title(
+        "Equilibrium climate sensitivity (ECS):  $\\Delta T = $ ECS · "
+        "$\\log_2(C / C_{ref})$\n"
+        f"central ECS = {ECS_CENTRAL_K:.1f} K, IPCC AR6 likely band "
+        f"{ECS_LOWER_K:.1f} - {ECS_UPPER_K:.1f} K"
+    )
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper left", fontsize=9, framealpha=0.92)
+
+    fig.tight_layout()
+    out.append(save(fig, "83_climate_sensitivity.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Neural network learning dynamics -- 84 + 85
+# ---------------------------------------------------------------------------
+
+def render_neural_network() -> list[str]:
+    """Produce 84_perceptron_learning.png and 85_loss_landscape.png.
+
+    84: Two panels.
+        Left  -- BCE loss vs epoch for a single-layer perceptron on AND/OR
+                 (rapid convergence to ~0) and XOR (plateaus, never solves)
+                 alongside a 2-4-1 MLP on XOR (drops to ~0, universality).
+        Right -- decision-boundary evolution of the MLP on XOR over a
+                 sequence of training snapshots, showing the learned
+                 non-linear separator carving the unit square into the
+                 four XOR regions.
+    85: Two panels.
+        Left  -- 2D loss landscape of an XOR MLP slice (two scalar
+                 weights of the first hidden layer swept on a grid) with
+                 the gradient-descent path overlaid.
+        Right -- canonical anisotropic-quadratic test surface
+                 L = a1*w1^2 + a2*w2^2 with a2/a1 >> 1 (ill-conditioned
+                 valley) and the GD trajectory zig-zagging through it.
+    """
+    from src.stiff_medium.neural_network_substrate import (
+        DEFAULT_HIDDEN_WIDTH,
+        NeuralNetworkGeometry,
+        NeuralNetworkSimulator,
+        boolean_dataset,
+    )
+    out: list[str] = []
+
+    # ------------------------------------------------------------------
+    # 84: perceptron / MLP loss curves + decision-boundary evolution
+    # ------------------------------------------------------------------
+    fig = plt.figure(figsize=(15, 7))
+
+    # ---- Left: BCE loss vs epoch -------------------------------------
+    ax_loss = fig.add_subplot(1, 2, 1)
+
+    # Single-layer perceptron on AND
+    sim_and = NeuralNetworkSimulator(
+        geometry=NeuralNetworkGeometry(layer_sizes=(2, 1), seed=0),
+        learning_rate=0.5, max_epochs=2000,
+    )
+    out_and = sim_and.train_perceptron("AND", max_epochs=2000)
+
+    # Single-layer perceptron on OR
+    sim_or = NeuralNetworkSimulator(
+        geometry=NeuralNetworkGeometry(layer_sizes=(2, 1), seed=0),
+        learning_rate=0.5, max_epochs=2000,
+    )
+    out_or = sim_or.train_perceptron("OR", max_epochs=2000)
+
+    # Single-layer perceptron on XOR (FAILS by Minsky-Papert 1969)
+    sim_xor_p = NeuralNetworkSimulator(
+        geometry=NeuralNetworkGeometry(layer_sizes=(2, 1), seed=0),
+        learning_rate=0.5, max_epochs=2000,
+    )
+    out_xor_p = sim_xor_p.train_perceptron("XOR", max_epochs=2000,
+                                           tolerance=1e-6)
+
+    # MLP on XOR (SUCCEEDS) -- pick a seed that converges
+    sim_xor_m = None
+    out_xor_m = None
+    candidate = None
+    result = None
+    for seed in (0, 1, 2, 3, 4):
+        candidate = NeuralNetworkSimulator(
+            geometry=NeuralNetworkGeometry(
+                layer_sizes=(2, DEFAULT_HIDDEN_WIDTH, 1), seed=seed,
+            ),
+            learning_rate=0.8, max_epochs=2000,
+        )
+        result = candidate.train_mlp("XOR",
+                                     hidden=DEFAULT_HIDDEN_WIDTH,
+                                     max_epochs=2000,
+                                     tolerance=1e-3)
+        Xb, yb = boolean_dataset("XOR")
+        preds = candidate.predict_classes(Xb)
+        if np.array_equal(preds, yb.astype(int)):
+            sim_xor_m, out_xor_m = candidate, result
+            break
+    if sim_xor_m is None:
+        sim_xor_m, out_xor_m = candidate, result
+
+    ax_loss.plot(out_and["epochs"], out_and["losses"],
+                 color="tab:green", linewidth=2.0,
+                 label=f"perceptron on AND (final={out_and['final_loss']:.3f})")
+    ax_loss.plot(out_or["epochs"], out_or["losses"],
+                 color="tab:cyan", linewidth=2.0,
+                 label=f"perceptron on OR  (final={out_or['final_loss']:.3f})")
+    ax_loss.plot(out_xor_p["epochs"], out_xor_p["losses"],
+                 color="tab:red", linewidth=2.0, linestyle="--",
+                 label=f"perceptron on XOR (final={out_xor_p['final_loss']:.3f})  Minsky-Papert wall")
+    ax_loss.plot(out_xor_m["epochs"], out_xor_m["losses"],
+                 color="tab:purple", linewidth=2.4,
+                 label=f"MLP (2-{DEFAULT_HIDDEN_WIDTH}-1) on XOR (final={out_xor_m['final_loss']:.3f})")
+    ax_loss.set_yscale("log")
+    ax_loss.set_xlabel("training epoch", fontsize=11)
+    ax_loss.set_ylabel("BCE loss (log scale)", fontsize=11)
+    ax_loss.set_title(
+        "Learning curves: perceptron solves AND/OR but not XOR;\n"
+        "single hidden layer (universality, Cybenko 1989) cracks XOR",
+        fontsize=11,
+    )
+    ax_loss.grid(True, which="both", alpha=0.3)
+    ax_loss.legend(loc="upper right", fontsize=8)
+
+    # ---- Right: decision-boundary evolution of the MLP on XOR --------
+    ax_db = fig.add_subplot(1, 2, 2)
+    snapshots_at = [0, 50, 200, 1000]
+    sim_snap = NeuralNetworkSimulator(
+        geometry=NeuralNetworkGeometry(
+            layer_sizes=(2, DEFAULT_HIDDEN_WIDTH, 1), seed=2,
+        ),
+        learning_rate=0.8, max_epochs=1500,
+    )
+    Xb, yb = boolean_dataset("XOR")
+    snap_outputs: dict = {}
+    X_mesh, Y_mesh = None, None
+    for epoch in range(1001):
+        if epoch in snapshots_at:
+            X_mesh, Y_mesh, Z = sim_snap.decision_boundary_grid(
+                x_range=(-0.3, 1.3), y_range=(-0.3, 1.3), n_grid=80,
+            )
+            snap_outputs[epoch] = Z.copy()
+        if epoch < 1000:
+            sim_snap.step(Xb, yb)
+    if 1000 not in snap_outputs:
+        X_mesh, Y_mesh, Z = sim_snap.decision_boundary_grid(
+            x_range=(-0.3, 1.3), y_range=(-0.3, 1.3), n_grid=80,
+        )
+        snap_outputs[1000] = Z.copy()
+
+    final_Z = snap_outputs[max(snap_outputs.keys())]
+    cf = ax_db.contourf(X_mesh, Y_mesh, final_Z,
+                        levels=np.linspace(0.0, 1.0, 11),
+                        cmap="RdBu_r", alpha=0.6)
+    cbar = fig.colorbar(cf, ax=ax_db, fraction=0.045, pad=0.03)
+    cbar.set_label("MLP output P(y=1|x)")
+
+    snap_colors = ["#ffe7a8", "#ffd166", "#f08c5a", "#a02828"]
+    for color, epoch in zip(snap_colors, sorted(snap_outputs.keys())):
+        ax_db.contour(X_mesh, Y_mesh, snap_outputs[epoch],
+                      levels=[0.5], colors=[color], linewidths=2.0)
+        ax_db.plot([], [], "-", color=color, linewidth=2.0,
+                   label=f"epoch {epoch}: 0.5 boundary")
+
+    for x_pt, y_lab in zip(Xb, yb.astype(int)):
+        marker = "o" if y_lab == 1 else "s"
+        face = "tab:red" if y_lab == 1 else "tab:blue"
+        ax_db.scatter([x_pt[0]], [x_pt[1]], c=face, s=240, marker=marker,
+                      edgecolors="black", linewidths=1.5, zorder=5)
+    ax_db.scatter([], [], c="tab:red",  s=160, marker="o",
+                  edgecolors="black", linewidths=1.5, label="XOR y=1")
+    ax_db.scatter([], [], c="tab:blue", s=160, marker="s",
+                  edgecolors="black", linewidths=1.5, label="XOR y=0")
+
+    ax_db.set_xlabel("input x_1", fontsize=11)
+    ax_db.set_ylabel("input x_2", fontsize=11)
+    ax_db.set_xlim(-0.3, 1.3)
+    ax_db.set_ylim(-0.3, 1.3)
+    ax_db.set_aspect("equal")
+    ax_db.set_title(
+        f"MLP decision boundary on XOR over training\n"
+        f"non-linear separator emerges (2-{DEFAULT_HIDDEN_WIDTH}-1 net, "
+        f"{sim_snap.geometry.n_parameters()} params)",
+        fontsize=11,
+    )
+    ax_db.legend(loc="upper right", fontsize=8)
+    ax_db.grid(True, alpha=0.25)
+
+    fig.suptitle(
+        "Perceptron learning from substrate: "
+        "weights = strain pattern, gradient descent = relaxation flow",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "84_perceptron_learning.png"))
+
+    # ------------------------------------------------------------------
+    # 85: 2D loss landscape with gradient-descent trajectory
+    # ------------------------------------------------------------------
+    fig = plt.figure(figsize=(15, 6.5))
+
+    # ---- Left: real loss landscape of an XOR MLP, two-weight slice ---
+    ax_ll = fig.add_subplot(1, 2, 1)
+    sim_ls = NeuralNetworkSimulator(
+        geometry=NeuralNetworkGeometry(
+            layer_sizes=(2, DEFAULT_HIDDEN_WIDTH, 1), seed=2,
+        ),
+        learning_rate=0.5, max_epochs=400,
+    )
+    Xb, yb = boolean_dataset("XOR")
+    path_w1 = []
+    path_w2 = []
+    for _ in range(400):
+        path_w1.append(sim_ls.geometry.weights[0][0, 0])
+        path_w2.append(sim_ls.geometry.weights[0][0, 1])
+        sim_ls.step(Xb, yb)
+    path_w1 = np.array(path_w1)
+    path_w2 = np.array(path_w2)
+
+    pad = max(2.0, 1.2 * float(np.max(np.abs(np.r_[path_w1, path_w2]))))
+    w1_lo, w1_hi = float(path_w1.min() - 1.0), float(path_w1.max() + 1.0)
+    w2_lo, w2_hi = float(path_w2.min() - 1.0), float(path_w2.max() + 1.0)
+    w1_lo = min(w1_lo, -pad);  w1_hi = max(w1_hi, +pad)
+    w2_lo = min(w2_lo, -pad);  w2_hi = max(w2_hi, +pad)
+    w1s, w2s, L_grid = sim_ls.loss_landscape(
+        Xb, yb,
+        w1_range=(w1_lo, w1_hi),
+        w2_range=(w2_lo, w2_hi),
+        n_grid=41,
+        i_layer=0, i_unit=0, j_unit=0, k_unit=1,
+    )
+    Xg, Yg = np.meshgrid(w1s, w2s, indexing="ij")
+    cf = ax_ll.contourf(Xg, Yg, L_grid, levels=18, cmap="viridis", alpha=0.85)
+    cbar = fig.colorbar(cf, ax=ax_ll, fraction=0.045, pad=0.03)
+    cbar.set_label("BCE loss L(w_a, w_b)")
+    ax_ll.contour(Xg, Yg, L_grid, levels=12,
+                  colors="white", linewidths=0.5, alpha=0.5)
+    ax_ll.plot(path_w1, path_w2, color="tab:red", linewidth=1.6,
+               label=f"GD path ({len(path_w1)} epochs)")
+    ax_ll.scatter([path_w1[0]], [path_w2[0]],
+                  c="white", edgecolors="black", linewidths=1.5,
+                  s=160, marker="o", zorder=10, label="start")
+    ax_ll.scatter([path_w1[-1]], [path_w2[-1]],
+                  c="tab:red", edgecolors="black", linewidths=1.5,
+                  s=180, marker="*", zorder=10, label="final")
+    ax_ll.set_xlabel("W[0][0, 0]  (input 1 -> hidden 1 weight)", fontsize=10)
+    ax_ll.set_ylabel("W[0][0, 1]  (input 1 -> hidden 2 weight)", fontsize=10)
+    ax_ll.set_title(
+        "XOR-MLP loss landscape on a 2-weight slice\n"
+        "(other parameters frozen; GD path overlaid)",
+        fontsize=11,
+    )
+    ax_ll.legend(loc="upper right", fontsize=8)
+    ax_ll.grid(True, alpha=0.2)
+
+    # ---- Right: ill-conditioned quadratic + zig-zag GD ---------------
+    ax_q = fig.add_subplot(1, 2, 2)
+    a1, a2 = 1.0, 20.0
+    extent = 3.0
+    g1, g2 = np.meshgrid(np.linspace(-extent, extent, 200),
+                          np.linspace(-extent / 2, extent / 2, 200),
+                          indexing="xy")
+    L_q = NeuralNetworkGeometry.quadratic_loss_landscape(
+        g1, g2, a1=a1, a2=a2,
+    )
+    levels = np.linspace(0.0, np.max(L_q), 24)
+    cf2 = ax_q.contourf(g1, g2, L_q, levels=levels, cmap="magma", alpha=0.85)
+    cbar2 = fig.colorbar(cf2, ax=ax_q, fraction=0.045, pad=0.03)
+    cbar2.set_label(rf"$L(w_1, w_2) = {a1:.0f} w_1^2 + {a2:.0f} w_2^2$")
+    ax_q.contour(g1, g2, L_q, levels=10,
+                 colors="white", linewidths=0.6, alpha=0.55)
+
+    path_zig = NeuralNetworkSimulator.gradient_descent_trajectory(
+        a1=a1, a2=a2, learning_rate=0.04, n_steps=70,
+        start=(-2.5, 1.2),
+    )
+    path_calm = NeuralNetworkSimulator.gradient_descent_trajectory(
+        a1=a1, a2=a2, learning_rate=0.005, n_steps=300,
+        start=(-2.5, 1.2),
+    )
+    ax_q.plot(path_zig[:, 0], path_zig[:, 1], "o-",
+              color="tab:cyan", markersize=3, linewidth=1.4,
+              label="GD lr=0.04 (zig-zag)")
+    ax_q.plot(path_calm[:, 0], path_calm[:, 1], ".-",
+              color="tab:green", markersize=2, linewidth=1.0, alpha=0.85,
+              label="GD lr=0.005 (smooth)")
+    ax_q.scatter([path_zig[0, 0]], [path_zig[0, 1]],
+                 c="white", edgecolors="black", linewidths=1.5,
+                 s=140, marker="o", zorder=10, label="start")
+    ax_q.scatter([0.0], [0.0],
+                 c="gold", edgecolors="black", linewidths=1.5,
+                 s=240, marker="*", zorder=10, label="global min")
+
+    ax_q.set_xlim(-extent, extent)
+    ax_q.set_ylim(-extent / 2, extent / 2)
+    ax_q.set_aspect("equal")
+    ax_q.set_xlabel("w_1", fontsize=11)
+    ax_q.set_ylabel("w_2", fontsize=11)
+    ax_q.set_title(
+        f"Anisotropic quadratic bowl  (kappa = a2/a1 = {a2/a1:.0f})\n"
+        f"high learning rate -> zig-zag along the steep direction",
+        fontsize=11,
+    )
+    ax_q.legend(loc="upper right", fontsize=8)
+    ax_q.grid(True, alpha=0.2)
+
+    fig.suptitle(
+        "Loss landscape from substrate: "
+        "L(theta) = strain energy of the network configuration",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "85_loss_landscape.png"))
+
+    return out
+
+
 def main() -> None:
     print(f"Rendering all visualizations to {VISUALS_DIR}/")
     print("=" * 70)
@@ -4825,6 +6286,18 @@ def main() -> None:
          render_neural),
         ("Ribosome translation (30S+50S + mRNA + A/P/E + WC pairing + 2 GTP/cycle)",
          render_ribosome),
+        ("Immune response (antibody Y-shape + 1 deg vs 2 deg titer + SIR coupled)",
+         render_immune),
+        ("Ecosystem dynamics (Lotka-Volterra + food web + May-Wigner)",
+         render_ecosystem),
+        ("Evolutionary dynamics (HW + Wright-Fisher + Kimura/Haldane + speciation)",
+         render_evolution),
+        ("Epidemiology (SIR + SEIR + R_0 phase diagram + vaccination)",
+         render_epidemiology),
+        ("Climate (radiative forcing + ECS + IPCC AR6 sensitivity bands)",
+         render_climate),
+        ("Neural network learning (perceptron AND/OR/XOR + MLP universality + loss landscape)",
+         render_neural_network),
         ("Substrate visualizer", render_substrate_visualizer),
     ]
     all_paths = []
