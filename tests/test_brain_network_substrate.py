@@ -276,3 +276,90 @@ def test_kuramoto_simulation_shapes_and_bounded_order():
     assert res["theta"].shape == (res["t_s"].size, 30)
     assert (res["order_r"] >= 0.0).all()
     assert (res["order_r"] <= 1.0 + 1.0e-9).all()
+
+
+# --------------------------------------------------------------------- #
+# (g) DMN K_4-apex topology -- substrate prediction                     #
+# --------------------------------------------------------------------- #
+
+def test_dmn_k4_apex_pcc_is_max_central():
+    """PCC must be (strictly) the maximum-degree node in the canonical
+    DMN sub-graph: this is the substrate-derived K_4-apex signature.
+    """
+    geom = BrainNetworkGeometry(n_nodes=60, k_neighbors=6, p_rewire=0.1,
+                                seed=2)
+    topo = geom.dmn_k4_apex_topology(apex_name="PCC")
+    assert topo["apex_name"] == "PCC"
+    assert topo["apex_is_max_central"] is True
+    # PCC degree should exceed degree of every other DMN region
+    for name, deg in topo["face_degrees"].items():
+        assert topo["apex_degree"] > deg, (
+            f"PCC degree {topo['apex_degree']} not > {name} degree {deg}"
+        )
+
+
+def test_dmn_k4_apex_closure_pattern():
+    """Apex-closure: PCC connects to every other region (closure mode)."""
+    geom = BrainNetworkGeometry(n_nodes=60, k_neighbors=6, p_rewire=0.1,
+                                seed=2)
+    topo = geom.dmn_k4_apex_topology(apex_name="PCC")
+    assert topo["apex_closure"] is True
+    assert topo["k4_apex_pattern_detected"] is True
+    # Uniformity to all face regions = 1 (binary, all == 1)
+    assert topo["connection_uniformity"] == pytest.approx(1.0, abs=1.0e-9)
+
+
+def test_dmn_k4_apex_invalid_apex_raises():
+    geom = BrainNetworkGeometry(n_nodes=40, k_neighbors=4, p_rewire=0.1,
+                                seed=0)
+    with pytest.raises(ValueError):
+        geom.dmn_k4_apex_topology(apex_name="not_a_region")
+
+
+def test_predict_pcc_role_structure():
+    """The substrate prediction must expose the 4 testable consequences."""
+    geom = BrainNetworkGeometry(n_nodes=60, k_neighbors=6, p_rewire=0.1,
+                                seed=2)
+    pred = geom.predict_pcc_role()
+    assert "PCC" in pred["claim"]
+    assert "K_4-apex" in pred["claim"] or "K_4" in pred["claim"]
+    assert pred["tier"].startswith("Tier 4")
+    # Four numbered consequences, each with test + falsifier
+    assert isinstance(pred["consequences"], list)
+    assert len(pred["consequences"]) == 4
+    seen_ids = set()
+    for c in pred["consequences"]:
+        assert "id" in c and "statement" in c
+        assert "test" in c and "falsifier" in c
+        assert c["id"] not in seen_ids
+        seen_ids.add(c["id"])
+    assert seen_ids == {1, 2, 3, 4}
+    # Required substrate concepts in the consequences (case-insensitive)
+    blob = " ".join(c["statement"] + " " + c["test"] + " " + c["falsifier"]
+                    for c in pred["consequences"]).lower()
+    for keyword in ("sum", "uniform", "anesthesia", "lesion"):
+        assert keyword in blob, f"missing keyword {keyword!r} in consequences"
+    # Topology metrics embedded for downstream auditing
+    assert pred["topology_metrics"]["k4_apex_pattern_detected"] is True
+
+
+def test_predict_pcc_role_alternative_apex_falsifies_pattern():
+    """Sanity: choosing a non-apex region (mPFC) as the candidate should
+    NOT trigger the apex-closure flag in the canonical DMN sub-graph,
+    because mPFC is not connected to both Angular Gyri.
+    """
+    geom = BrainNetworkGeometry(n_nodes=60, k_neighbors=6, p_rewire=0.1,
+                                seed=2)
+    topo_alt = geom.dmn_k4_apex_topology(apex_name="mPFC")
+    # mPFC is not max-central (PCC is) and is not a closure node
+    assert topo_alt["apex_is_max_central"] is False
+    assert topo_alt["apex_closure"] is False
+    assert topo_alt["k4_apex_pattern_detected"] is False
+
+
+def test_substrate_signature_includes_dmn_apex():
+    geom = BrainNetworkGeometry(n_nodes=40, k_neighbors=4, p_rewire=0.1,
+                                seed=0)
+    sig = geom.substrate_signature()
+    assert "dmn_k4_apex" in sig
+    assert "PCC" in sig["dmn_k4_apex"]

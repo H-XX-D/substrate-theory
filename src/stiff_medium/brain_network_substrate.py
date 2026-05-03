@@ -390,6 +390,191 @@ class BrainNetworkGeometry:
         return names, coords, A
 
     # ------------------------------------------------------------------
+    # Default Mode Network — K_4-apex topology (substrate prediction)
+    # ------------------------------------------------------------------
+
+    def dmn_k4_apex_topology(self,
+                             apex_name: str = "PCC",
+                             ) -> Dict:
+        """Identify the K_4-apex closure mode of the Default Mode Network.
+
+        Substrate framework prediction.  The K_4 nucleon has 3 quark-vertex
+        face + 1 apex closure vertex; the Waddington landscape has
+        1 pluripotent + 3 germ-layer differentiations.  Both are "1+3"
+        substrate structures.  The DMN is asserted to obey the same
+        K_4-apex partition: PCC (posterior cingulate cortex) is the apex,
+        the other 5 regions span a closed face-cluster, and PCC closes
+        the network as the sum/closure mode.
+
+        This method computes degree-based centrality for each DMN region
+        and reports whether the apex carries strictly the highest score
+        (the substrate-derived signature).  It also returns a ``closure``
+        flag = True iff the apex's connectivity profile is the algebraic
+        sum (uniform projection) of the face cluster — i.e. the apex
+        connects to every other region with non-zero weight.
+
+        Returns
+        -------
+        Dict with keys:
+            apex_name            : str, the apex region (default "PCC")
+            apex_degree          : int, degree of the apex node
+            face_degrees         : Dict[str, int], degree per non-apex
+            apex_centrality      : float, normalized degree centrality of apex
+            face_centralities    : Dict[str, float], same for non-apex regions
+            apex_is_max_central  : bool, True iff apex strictly ≥ all others
+            apex_closure         : bool, True iff apex connects to every
+                                   non-apex region (sum/closure pattern)
+            connection_uniformity: float in [0,1], 1 = uniform connectivity
+                                   to all face regions, 0 = single-target
+        """
+        names, _, A = self.dmn_subgraph()
+        if apex_name not in names:
+            raise ValueError(
+                f"apex_name {apex_name!r} not in DMN regions {names}")
+        K = len(names)
+        idx = {n: i for i, n in enumerate(names)}
+        a = idx[apex_name]
+        face_idx = [i for i in range(K) if i != a]
+        face_names = [names[i] for i in face_idx]
+
+        # Degrees in the DMN sub-graph
+        deg = A.sum(axis=1)
+        apex_deg = int(deg[a])
+        face_deg = {n: int(deg[idx[n]]) for n in face_names}
+        # Degree centrality (normalized by K-1 max possible neighbours)
+        norm = max(K - 1, 1)
+        apex_cent = apex_deg / norm
+        face_cent = {n: face_deg[n] / norm for n in face_names}
+
+        apex_is_max = all(apex_deg >= face_deg[n] for n in face_names) \
+            and any(apex_deg > face_deg[n] for n in face_names)
+
+        # Closure: apex connects to every non-apex region
+        connections_to_face = [int(A[a, j]) for j in face_idx]
+        apex_closure = all(c == 1 for c in connections_to_face)
+
+        # Uniformity: 1 - normalized variance of apex-to-face weights
+        if len(connections_to_face) > 1 and sum(connections_to_face) > 0:
+            mean_w = float(np.mean(connections_to_face))
+            var_w = float(np.var(connections_to_face))
+            # For binary {0,1} weights, max variance = 0.25 at 50/50 mix
+            uniformity = 1.0 - min(var_w / 0.25, 1.0)
+        else:
+            uniformity = 0.0
+
+        return {
+            "apex_name": apex_name,
+            "apex_degree": apex_deg,
+            "face_degrees": face_deg,
+            "apex_centrality": float(apex_cent),
+            "face_centralities": face_cent,
+            "apex_is_max_central": bool(apex_is_max),
+            "apex_closure": bool(apex_closure),
+            "connection_uniformity": float(uniformity),
+            "k4_apex_pattern_detected": bool(apex_is_max and apex_closure),
+        }
+
+    def predict_pcc_role(self) -> Dict:
+        """Substrate-framework prediction: PCC is the K_4-apex closure mode.
+
+        Cross-domain alignment:
+            * K_4 nucleon: 3 quark-vertex face + 1 apex closure vertex
+            * Waddington landscape: 1 pluripotent state + 3 germ-layer
+              differentiations (endoderm, mesoderm, ectoderm)
+            * Qubit triality on the Bloch sphere: 3 mutually-unbiased
+              bases (X, Y, Z) + 1 "no-orientation" closure
+            * DMN: 1 PCC apex + 5 regional face-cluster (extended K_4 because
+              the DMN is doubled by L/R lateralization on Angular Gyrus and
+              Hippocampus, but the substrate-irreducible apex/face split is
+              preserved)
+
+        Returns a structured prediction with 4 testable consequences and
+        their corresponding falsifiers.
+        """
+        topology = self.dmn_k4_apex_topology(apex_name="PCC")
+        return {
+            "claim": "PCC is the K_4-apex closure mode of the DMN",
+            "substrate_basis": (
+                "K_4 simplex topology with 1+N apex/face partition. "
+                "Cross-domain reuse: K_4 nucleon, Waddington landscape, "
+                "qubit triality. DMN inherits the same apex/face split."
+            ),
+            "topology_metrics": topology,
+            "consequences": [
+                {
+                    "id": 1,
+                    "statement": (
+                        "PCC dynamics ≈ sum/closure of other 5 regions "
+                        "(substrate-derived: apex closes the face)"
+                    ),
+                    "test": (
+                        "Linear regression PCC(t) ~ Σ_i w_i · region_i(t) "
+                        "should explain >70% variance with non-degenerate "
+                        "(non-zero) weights on every face region"
+                    ),
+                    "falsifier": (
+                        "PCC fits as independent oscillator with low "
+                        "explained variance from face regions (<30%)"
+                    ),
+                },
+                {
+                    "id": 2,
+                    "statement": (
+                        "PCC connectivity uniformly distributed across "
+                        "other 5 regions, not preferentially to subsets"
+                    ),
+                    "test": (
+                        "Variance of PCC→region connection weights "
+                        "(diffusion MRI tractography) is small relative "
+                        "to mean: CV < 0.4"
+                    ),
+                    "falsifier": (
+                        "PCC connectivity is concentrated on ≤2 of the "
+                        "5 face regions (CV > 1.0)"
+                    ),
+                },
+                {
+                    "id": 3,
+                    "statement": (
+                        "PCC is LAST to lose activity in anesthesia "
+                        "(loss of apex dissolves the bound network)"
+                    ),
+                    "test": (
+                        "Track regional BOLD/EEG amplitudes during "
+                        "propofol/sevoflurane induction; PCC should "
+                        "remain coherent latest into deep anesthesia"
+                    ),
+                    "falsifier": (
+                        "PCC loses coherence before any of the 5 face "
+                        "regions during anesthesia induction"
+                    ),
+                },
+                {
+                    "id": 4,
+                    "statement": (
+                        "PCC lesions cause disproportionate disruption "
+                        "of self-referential / autobiographical processing"
+                    ),
+                    "test": (
+                        "Lesion-mapping studies (PCC vs equivalent-volume "
+                        "mPFC or angular-gyrus lesions) show >2x deficit "
+                        "on self-referential tasks for PCC lesions"
+                    ),
+                    "falsifier": (
+                        "PCC lesions produce deficits comparable to or "
+                        "smaller than other DMN-region lesions"
+                    ),
+                },
+            ],
+            "data_source": (
+                "Human Connectome Project (HCP) S1200 release for "
+                "tractography + resting-state BOLD; ds002785 "
+                "(propofol-anesthesia BOLD) for consequence 3"
+            ),
+            "tier": "Tier 4 falsifiable substrate prediction",
+        }
+
+    # ------------------------------------------------------------------
     # Substrate signature
     # ------------------------------------------------------------------
 
@@ -405,6 +590,7 @@ class BrainNetworkGeometry:
             "n_edges": self.n_edges(),
             "mean_degree": self.mean_degree(),
             "lambda_qcd_mev": LAMBDA_QCD_MEV,
+            "dmn_k4_apex": "PCC (posterior cingulate cortex)",
         }
 
 
