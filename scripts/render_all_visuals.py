@@ -5716,6 +5716,329 @@ def render_evolution() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Cell differentiation (Waddington landscape) -- 116 + 117
+# ---------------------------------------------------------------------------
+
+def render_differentiation() -> list[str]:
+    """Produce 116_waddington_landscape.png and 117_cell_fate.png.
+
+    116: 3D Waddington landscape with marbles rolling into basins.
+        Left:   3D surface U(g1, g2) of the Waddington epigenetic
+                landscape; basins (cell fates) appear as wells, ridges
+                as crests.  Marbles released from a stem-state cup at
+                the top roll downhill into one of three terminal
+                basins (ectoderm / mesoderm / endoderm).
+        Right:  2D contour map of the same landscape with several
+                Langevin trajectories overlaid.  Each trajectory is
+                coloured by the basin it ends in.  Pluripotent +
+                epiblast + the three germ layers are labelled.
+
+    117: Lineage tree from totipotent through pluripotent and the three
+        germ layers down to canonical adult cell types.  Colour-coded by
+        germ-layer ancestry.  Annotations show:
+            * pluripotent basin and Yamanaka-factor reprogramming arrow
+            * three germ layers (ectoderm/mesoderm/endoderm)
+            * representative adult terminally differentiated cell types
+              under each germ layer
+            * trophoblast lineage (extraembryonic) sibling of the
+              pluripotent inner-cell mass
+    """
+    import matplotlib.patheffects as patheffects
+    import matplotlib.lines as mlines
+    from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers projection)
+
+    from src.stiff_medium.differentiation_substrate import (
+        N_GERM_LAYERS,
+        N_YAMANAKA_FACTORS,
+        YAMANAKA_EFFICIENCY,
+        DifferentiationGeometry,
+        DifferentiationSimulator,
+    )
+    out: list[str] = []
+
+    # ---- 116: 3D Waddington landscape with marbles -----------------------
+    geom = DifferentiationGeometry()
+    sim = DifferentiationSimulator(geometry=geom, noise_sigma=0.6, dt=0.05)
+
+    fig = plt.figure(figsize=(16, 7.5))
+
+    # --- Left: 3D surface of U with marbles
+    ax3d = fig.add_subplot(1, 2, 1, projection="3d")
+    G1, G2, U = geom.landscape_grid(
+        x_range=(-5.0, 5.0), y_range=(-3.0, 5.0), n=100,
+    )
+    surf = ax3d.plot_surface(
+        G1, G2, U, cmap="viridis_r", alpha=0.92,
+        linewidth=0, antialiased=True, edgecolor="none",
+    )
+    fig.colorbar(surf, ax=ax3d, shrink=0.55, pad=0.05,
+                 label="strain energy U(g1, g2)")
+
+    # Marbles -- spheres rolling down on the surface
+    rng = np.random.default_rng(7)
+    n_marbles = 7
+    marble_starts = []
+    for k in range(n_marbles):
+        # Cluster marbles around the pluripotent basin
+        x0 = rng.uniform(-0.7, 0.7)
+        y0 = 4.0 + rng.uniform(-0.3, 0.4)
+        marble_starts.append((x0, y0))
+    marble_colors = plt.cm.autumn(np.linspace(0.05, 0.95, n_marbles))
+    for k, (x0, y0) in enumerate(marble_starts):
+        traj = sim.differentiation_trajectory(
+            start=(x0, y0), n_steps=600, seed=100 + k,
+        )
+        # Vertical (potential) coordinate for each step
+        z = geom.potential(traj[:, 0], traj[:, 1])
+        ax3d.plot(traj[:, 0], traj[:, 1], z + 0.05,
+                  color=marble_colors[k], linewidth=1.6, alpha=0.85)
+        # Final marble = a sphere
+        ax3d.scatter([traj[-1, 0]], [traj[-1, 1]], [z[-1] + 0.10],
+                     color=marble_colors[k], s=120,
+                     edgecolors="black", linewidths=1.0, zorder=8)
+        # Initial marble (smaller, white-ringed)
+        ax3d.scatter([x0], [y0],
+                     [float(geom.potential(np.array(x0),
+                                           np.array(y0))) + 0.10],
+                     facecolor=marble_colors[k], s=60,
+                     edgecolors="white", linewidths=1.0)
+
+    # Label basin centres
+    for (cx, cy, depth, sigma, label) in geom.basins:
+        u_c = float(geom.potential(np.array(cx), np.array(cy)))
+        ax3d.text(cx, cy, u_c - 0.4, label,
+                  fontsize=8, color="white", fontweight="bold",
+                  path_effects=[patheffects.withStroke(
+                      linewidth=2.0, foreground="black")])
+
+    ax3d.set_xlabel("g1 (master regulator A)", fontsize=9)
+    ax3d.set_ylabel("g2 (master regulator B)", fontsize=9)
+    ax3d.set_zlabel("U  (substrate strain energy)", fontsize=9)
+    ax3d.set_title(
+        f"Waddington epigenetic landscape\n"
+        f"{geom.n_basins()} basins, {geom.n_ridges()} ridges, "
+        f"{geom.n_terminal_lineages()} germ layers",
+        fontsize=11,
+    )
+    ax3d.view_init(elev=28, azim=-110)
+
+    # --- Right: 2D contour map with overlaid trajectories
+    ax2d = fig.add_subplot(1, 2, 2)
+    cf = ax2d.contourf(G1, G2, U, levels=22, cmap="viridis_r")
+    fig.colorbar(cf, ax=ax2d, shrink=0.85, label="U(g1, g2)")
+
+    # Mark basin centres with stars
+    for (cx, cy, depth, sigma, label) in geom.basins:
+        ax2d.scatter([cx], [cy], marker="*", s=320, c="white",
+                     edgecolors="black", linewidths=1.5, zorder=6)
+        ax2d.text(cx + 0.2, cy + 0.2, label, fontsize=9,
+                  color="white", fontweight="bold",
+                  path_effects=[patheffects.withStroke(
+                      linewidth=2.0, foreground="black")])
+
+    # Mark ridge centres with X
+    for (cx, cy, height, sigma, label) in geom.ridges:
+        ax2d.scatter([cx], [cy], marker="x", s=120, c="red",
+                     linewidths=2.0, zorder=6)
+
+    # Overlay several trajectories
+    sim_traj = DifferentiationSimulator(
+        geometry=geom, noise_sigma=0.9, dt=0.05,
+    )
+    rng2 = np.random.default_rng(13)
+    label_to_color = {
+        "pluripotent": "tab:gray",
+        "epiblast": "tab:olive",
+        "ectoderm": "tab:blue",
+        "mesoderm": "tab:green",
+        "endoderm": "tab:red",
+    }
+    n_traj = 16
+    for k in range(n_traj):
+        x0 = 0.0 + rng2.uniform(-0.4, 0.4)
+        y0 = 4.0 + rng2.uniform(-0.3, 0.3)
+        traj = sim_traj.differentiation_trajectory(
+            start=(x0, y0), n_steps=600,
+            seed=int(rng2.integers(0, 10_000_000)),
+        )
+        end_label = sim_traj.basin_assignment(tuple(traj[-1]))
+        col = label_to_color.get(end_label, "tab:gray")
+        ax2d.plot(traj[:, 0], traj[:, 1], "-",
+                  color=col, linewidth=1.2, alpha=0.7, zorder=4)
+        ax2d.scatter([traj[-1, 0]], [traj[-1, 1]], marker="o", s=40,
+                     facecolor=col, edgecolor="black",
+                     linewidth=0.6, zorder=5)
+    handles = []
+    for name, col in label_to_color.items():
+        handles.append(mlines.Line2D([], [], color=col, marker="o",
+                                     linestyle="-",
+                                     label=name, markersize=7))
+    ax2d.legend(handles=handles, loc="lower right", fontsize=8,
+                title="end basin")
+    ax2d.set_xlim(-5.0, 5.0)
+    ax2d.set_ylim(-3.0, 5.0)
+    ax2d.set_xlabel("g1 (master regulator A)", fontsize=10)
+    ax2d.set_ylabel("g2 (master regulator B)", fontsize=10)
+    ax2d.set_title(
+        "Marble release from stem state -> trilineage decision\n"
+        "white * = basin (cell fate),  red x = ridge (cell-fate boundary)",
+        fontsize=11,
+    )
+    ax2d.set_aspect("equal", adjustable="box")
+
+    fig.suptitle(
+        "Cell differentiation from substrate: Waddington landscape "
+        "(strain energy of gene-expression configuration)",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "116_waddington_landscape.png"))
+
+    # ---- 117: lineage tree from totipotent to all major cell types -------
+    fig2 = plt.figure(figsize=(15, 9))
+    ax = fig2.add_subplot(1, 1, 1)
+    ax.set_xlim(0.0, 14.0)
+    ax.set_ylim(0.0, 10.5)
+    ax.axis("off")
+
+    # ---- Tree layout (manual: this is a conceptual figure) ----
+    # Levels (top to bottom):
+    #   0 totipotent          y = 9.7
+    #   1 pluripotent + trophoblast  y = 8.2
+    #   2 germ layers         y = 6.0
+    #   3 terminal cell types y = 1.8 / 2.6 (alternating)
+
+    def node(x, y, label, color, fontsize=10, width=1.6, height=0.55):
+        box = FancyBboxPatch(
+            (x - width / 2, y - height / 2), width, height,
+            boxstyle="round,pad=0.05,rounding_size=0.18",
+            facecolor=color, edgecolor="black", linewidth=1.2,
+            alpha=0.92,
+        )
+        ax.add_patch(box)
+        ax.text(x, y, label, ha="center", va="center",
+                fontsize=fontsize, fontweight="bold",
+                color="black")
+        return (x, y)
+
+    def edge(p1, p2, color="0.4", lw=1.4, alpha=0.85):
+        ax.plot([p1[0], p2[0]], [p1[1], p2[1]], "-",
+                color=color, linewidth=lw, alpha=alpha, zorder=1)
+
+    # Totipotent root
+    totipotent = node(7.0, 9.7, "TOTIPOTENT\nzygote", "#fff8b5",
+                      fontsize=11, width=2.4, height=0.85)
+
+    # Pluripotent (inner cell mass) and Trophoblast (extraembryonic)
+    pluri = node(5.0, 8.2, "PLURIPOTENT\n(inner cell mass)",
+                 "#ffe89a", fontsize=10, width=2.6, height=0.85)
+    troph = node(11.5, 8.2, "TROPHOBLAST\n(extraembryonic)",
+                 "#e0e0e0", fontsize=10, width=2.6, height=0.85)
+    edge(totipotent, pluri)
+    edge(totipotent, troph)
+
+    # Trophoblast leaves
+    troph_leaves = ["syncytiotrophoblast", "cytotrophoblast"]
+    troph_xs = [10.5, 12.7]
+    for x, lab in zip(troph_xs, troph_leaves):
+        leaf = node(x, 6.5, lab, "#cfcfcf", fontsize=8,
+                    width=1.9, height=0.5)
+        edge(troph, leaf)
+
+    # Three germ layers
+    germ_data = [
+        ("ECTODERM",  1.6, "#9ecae1"),
+        ("MESODERM",  4.7, "#a1d99b"),
+        ("ENDODERM",  7.8, "#fcae91"),
+    ]
+    germ_nodes = []
+    for label, x, color in germ_data:
+        gn = node(x, 6.0, label, color, fontsize=10,
+                  width=1.8, height=0.55)
+        germ_nodes.append(gn)
+        edge(pluri, gn)
+
+    # Adult cell types under each germ layer
+    germ_children = {
+        "ECTODERM":  ["neurons", "glia", "epidermis",
+                      "melanocytes", "neural crest"],
+        "MESODERM":  ["muscle", "blood", "bone",
+                      "cartilage", "endothelium", "kidney"],
+        "ENDODERM":  ["gut epithelium", "lung alveoli",
+                      "liver hepatocytes", "pancreas islets",
+                      "thyroid"],
+    }
+    germ_color_light = {
+        "ECTODERM":  "#deebf7",
+        "MESODERM":  "#e5f5e0",
+        "ENDODERM":  "#fee0d2",
+    }
+    for (label, x_g, _), gn in zip(germ_data, germ_nodes):
+        children = germ_children[label]
+        n = len(children)
+        # Spread children horizontally under the germ layer
+        x_start = x_g - 1.1
+        x_end = x_g + 1.1
+        if n == 1:
+            xs = [x_g]
+        else:
+            xs = list(np.linspace(x_start, x_end, n))
+        # Stagger y so child labels don't overlap
+        y_levels = [2.6, 1.6, 2.6, 1.6, 2.6, 1.6]
+        for k, (cx, child_label) in enumerate(zip(xs, children)):
+            cy = y_levels[k % len(y_levels)]
+            leaf = node(cx, cy, child_label,
+                        germ_color_light[label],
+                        fontsize=7, width=1.30, height=0.35)
+            edge(gn, leaf, color="0.5", lw=0.9, alpha=0.7)
+
+    # Yamanaka reprogramming arrow: from a terminal node back to pluripotent
+    arrow = FancyArrowPatch(
+        (4.7, 1.6), (5.0, 7.7),
+        connectionstyle="arc3,rad=-0.40",
+        arrowstyle="-|>", mutation_scale=22,
+        color="purple", linewidth=2.4, alpha=0.85,
+    )
+    ax.add_patch(arrow)
+    ax.text(0.4, 4.8,
+            f"Yamanaka factors\n(N = {N_YAMANAKA_FACTORS}: Oct4, Sox2,\n"
+            f"Klf4, c-Myc)\nefficiency ~ {YAMANAKA_EFFICIENCY*100:.1f}%",
+            fontsize=9, color="purple", fontweight="bold",
+            ha="left", va="center",
+            bbox=dict(facecolor="#f0e0ff", edgecolor="purple",
+                      boxstyle="round,pad=0.4", alpha=0.85))
+
+    # Substrate framing annotation (bottom-right)
+    ax.text(13.7, 0.45,
+            "SUBSTRATE FRAMING\n"
+            "gene expression = substrate strain configuration\n"
+            "Waddington landscape = substrate strain energy U(g)\n"
+            "differentiation = downhill substrate relaxation\n"
+            "reprogramming = forced uphill traversal (Yamanaka)",
+            ha="right", va="bottom", fontsize=8,
+            bbox=dict(facecolor="#fffbe6", edgecolor="#999", alpha=0.92,
+                      boxstyle="round,pad=0.5"))
+
+    # Title
+    ax.text(7.0, 10.25,
+            "Cell-fate lineage tree from totipotent zygote to "
+            "all major adult cell types",
+            ha="center", va="center", fontsize=13,
+            fontweight="bold")
+    ax.text(7.0, 9.95,
+            f"{N_GERM_LAYERS} germ layers, "
+            "5 Waddington basins, "
+            f"{sum(len(v) for v in germ_children.values())} terminal cell types shown",
+            ha="center", va="center", fontsize=9, color="#444")
+
+    fig2.tight_layout()
+    out.append(save(fig2, "117_cell_fate.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Climate (radiative forcing + sensitivity) -- 82 + 83
 # ---------------------------------------------------------------------------
 
@@ -7228,6 +7551,395 @@ def render_semi() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Mitochondrial bioenergetics - ETC + ATP synthase + chemiosmosis
+# ---------------------------------------------------------------------------
+
+def render_mito() -> list[str]:
+    """Produce 106_etc_complexes.png and 107_atp_synthase.png.
+
+    106: 4 ETC complexes (I/II/III/IV) embedded in the inner membrane,
+         with redox-potential ladder, H+ pumping arrows, and the
+         ubiquinone Q + cytochrome c shuttle paths.
+    107: F0F1 ATP synthase rotor structure (c-ring + gamma-shaft +
+         alpha3beta3 head) + proton flux -> ATP synthesis curve.
+    """
+    from src.stiff_medium.mitochondria_substrate import (
+        ATP_PER_REV,
+        H_PER_2E_COMPLEX_I,
+        H_PER_2E_COMPLEX_II,
+        H_PER_2E_COMPLEX_III,
+        H_PER_2E_COMPLEX_IV,
+        MitoGeometry,
+        MitoSimulator,
+        example_c_rings,
+    )
+    out: list[str] = []
+    geom = MitoGeometry()
+    sim = MitoSimulator(geometry=geom)
+
+    # 106_etc_complexes.png
+    fig = plt.figure(figsize=(18, 10))
+    gs = fig.add_gridspec(2, 2, height_ratios=[1.2, 1.0],
+                           width_ratios=[1.4, 1.0],
+                           hspace=0.36, wspace=0.28)
+
+    ax = fig.add_subplot(gs[0, 0])
+    ax.fill_between([0.0, 1.0], 0.45, 0.55,
+                     color="khaki", alpha=0.6,
+                     label="inner membrane (lipid)")
+    ax.axhline(0.5, color="goldenrod", linestyle="--",
+                linewidth=0.6, alpha=0.5)
+    ax.text(0.02, 0.95, "INTERMEMBRANE SPACE  (H+ high, low pH)",
+             fontsize=10, color="firebrick", fontweight="bold")
+    ax.text(0.02, 0.05,
+             "MATRIX  (H+ low, high pH; NADH, FADH2, O2, ADP)",
+             fontsize=10, color="navy", fontweight="bold")
+    complex_specs = [
+        ("I",   0.13, "steelblue",
+         "Complex I\nNADH dehydrogenase",
+         H_PER_2E_COMPLEX_I,  "NADH->Q"),
+        ("II",  0.30, "darkseagreen",
+         "Complex II\nsuccinate dehydrogenase",
+         H_PER_2E_COMPLEX_II, "FADH2->Q"),
+        ("III", 0.55, "indianred",
+         "Complex III\ncyt bc1",
+         H_PER_2E_COMPLEX_III, "Q->cyt c"),
+        ("IV",  0.80, "darkorange",
+         "Complex IV\ncyt c oxidase",
+         H_PER_2E_COMPLEX_IV, "cyt c->O2"),
+    ]
+    box_w = 0.10
+    for name, x, color, label, h_pump, redox in complex_specs:
+        ax.fill_between([x - box_w / 2, x + box_w / 2],
+                         0.30, 0.70, color=color, alpha=0.85,
+                         edgecolor="black", linewidth=1.5)
+        ax.text(x, 0.50, name, ha="center", va="center",
+                 fontsize=14, fontweight="bold", color="white")
+        ax.text(x, 0.22, label, ha="center", va="top",
+                 fontsize=8, color=color, fontweight="bold")
+        ax.text(x, 0.78, redox, ha="center", va="bottom",
+                 fontsize=8, style="italic", color="black")
+        if h_pump > 0:
+            for k in range(h_pump):
+                xk = x + (k - (h_pump - 1) / 2.0) * 0.012
+                ax.annotate("", xy=(xk, 0.93), xytext=(xk, 0.30),
+                             arrowprops=dict(arrowstyle="->",
+                                             color="red", lw=1.5,
+                                             alpha=0.85))
+            ax.text(x, 0.97, f"{h_pump} H+", ha="center",
+                     va="bottom", fontsize=9, color="red",
+                     fontweight="bold")
+        else:
+            ax.text(x, 0.93, "no H+", ha="center", va="bottom",
+                     fontsize=9, color="grey", fontweight="bold")
+
+    ax.plot([0.13, 0.30, 0.55], [0.55, 0.55, 0.55], "o--",
+             color="purple", markersize=8, lw=1.4, alpha=0.7,
+             label="ubiquinone Q (lipid-soluble, 2 e-)")
+    ax.text(0.42, 0.59, "Q->QH2", fontsize=8, color="purple",
+             style="italic", ha="center")
+    ax.plot([0.55, 0.80], [0.80, 0.80], "s--",
+             color="firebrick", markersize=8, lw=1.4, alpha=0.7,
+             label="cytochrome c (water-soluble, 1 e-)")
+    ax.text(0.675, 0.84, "cyt c", fontsize=8, color="firebrick",
+             style="italic", ha="center")
+    ax.text(0.13, 0.10, "NADH->NAD+", fontsize=8, color="navy",
+             ha="center")
+    ax.text(0.30, 0.10, "succinate->fumarate", fontsize=8,
+             color="navy", ha="center")
+    ax.text(0.80, 0.10, "1/2 O2 + 2H+ -> H2O", fontsize=8,
+             color="navy", ha="center")
+    ax.annotate("", xy=(0.96, 0.07), xytext=(0.96, 0.93),
+                 arrowprops=dict(arrowstyle="->", color="green",
+                                 lw=2.0, alpha=0.7))
+    ax.text(0.96, 0.50, "F0F1\nATP\nsynthase\n(see 107)",
+             ha="center", va="center", fontsize=8, color="green",
+             fontweight="bold",
+             bbox=dict(boxstyle="round,pad=0.2", fc="lightgreen",
+                        ec="green", alpha=0.6))
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title(
+        "Electron transport chain (ETC) - 4 complexes pump H+ across inner membrane\n"
+        f"NADH path: I->Q->III->IV "
+        f"({sim.etc_h_pumped_per_nadh()} H+/2e-);  "
+        f"FADH2 path: II->Q->III->IV "
+        f"({sim.etc_h_pumped_per_fadh2()} H+/2e-)",
+        fontsize=11, fontweight="bold")
+    ax.legend(fontsize=8, loc="center left",
+               bbox_to_anchor=(0.0, 0.02), framealpha=0.85)
+
+    ax_lad = fig.add_subplot(gs[0, 1])
+    ladder = sim.etc_redox_ladder()
+    labels = [lab for lab, _ in ladder]
+    es = [e for _, e in ladder]
+    y_pos = list(range(len(ladder)))[::-1]
+    bar_colors = ["royalblue", "seagreen", "purple",
+                   "firebrick", "darkorange"]
+    ax_lad.barh(y_pos, es, color=bar_colors, alpha=0.85,
+                 edgecolor="black", linewidth=1.0)
+    for i, (lab, e) in enumerate(ladder):
+        ax_lad.text(e + 0.02 if e >= 0 else e - 0.04,
+                     y_pos[i], f"{e:+.3f} V", va="center",
+                     ha="left" if e >= 0 else "right",
+                     fontsize=9, fontweight="bold")
+    ax_lad.set_yticks(y_pos)
+    ax_lad.set_yticklabels(labels, fontsize=9)
+    ax_lad.axvline(0.0, color="black", linewidth=0.6)
+    ax_lad.set_xlabel("standard redox potential E (pH 7) (V)",
+                       fontsize=10)
+    ax_lad.set_title(
+        f"Redox ladder: NADH -> O2   "
+        f"dE = {sim.etc_total_delta_e_nadh():.3f} V\n"
+        f"dG = {sim.etc_total_delta_g_nadh_kjmol():.0f} kJ/mol per 2 e-",
+        fontsize=10)
+    ax_lad.set_xlim(-0.45, +0.95)
+    ax_lad.grid(True, alpha=0.3, axis="x")
+
+    ax_h = fig.add_subplot(gs[1, 0])
+    names = ["Complex I", "Complex II", "Complex III", "Complex IV"]
+    h_counts = [H_PER_2E_COMPLEX_I, H_PER_2E_COMPLEX_II,
+                 H_PER_2E_COMPLEX_III, H_PER_2E_COMPLEX_IV]
+    bar_colors2 = ["steelblue", "darkseagreen",
+                    "indianred", "darkorange"]
+    bars = ax_h.bar(names, h_counts, color=bar_colors2,
+                      edgecolor="black", linewidth=1.0)
+    for b, h in zip(bars, h_counts):
+        ax_h.text(b.get_x() + b.get_width() / 2,
+                   b.get_height() + 0.1, f"{h} H+",
+                   ha="center", va="bottom",
+                   fontsize=11, fontweight="bold")
+    ax_h.axhline(sim.etc_h_pumped_per_nadh(),
+                  color="navy", linestyle="--", linewidth=1.2,
+                  label=f"NADH path: {sim.etc_h_pumped_per_nadh()} H+/2e-")
+    ax_h.axhline(sim.etc_h_pumped_per_fadh2(),
+                  color="seagreen", linestyle=":", linewidth=1.2,
+                  label=f"FADH2 path: {sim.etc_h_pumped_per_fadh2()} H+/2e-")
+    ax_h.set_ylabel("H+ pumped per 2 e-", fontsize=10)
+    ax_h.set_title("Proton-pumping stoichiometry per ETC complex",
+                    fontsize=11)
+    ax_h.set_ylim(0, 6)
+    ax_h.legend(fontsize=9, loc="upper right")
+    ax_h.grid(True, alpha=0.3, axis="y")
+
+    ax_pmf = fig.add_subplot(gs[1, 1])
+    ax_pmf.axis("off")
+    breakdown = sim.atp_per_glucose_breakdown()
+    summary_lines = [
+        "Mitchell chemiosmosis (1961)",
+        "=" * 38,
+        f"dPsi   = {geom.delta_psi_v*1000:+.0f} mV",
+        f"dpH    = {geom.delta_ph:+.1f}",
+        f"PMF    = |dPsi| + 0.06.dpH = {sim.pmf_mv():.0f} mV",
+        f"dG/H+  = F.PMF = {sim.delta_g_per_proton_kjmol():.1f} kJ/mol",
+        "",
+        "ATP synthase stoichiometry",
+        "-" * 38,
+        f"c-ring (mammal) = {geom.c_ring_size}",
+        f"H+ per ATP      = c/3 = {sim.h_per_atp():.2f}",
+        f"ATP per 360 deg = {sim.atp_per_revolution()}",
+        f"rotor torque    = {sim.torque_required_nm():.1f} pN.nm",
+        "",
+        "Glucose oxidation accounting (mammal)",
+        "-" * 38,
+        f"substrate-level (glycol+TCA) = "
+        f"{breakdown['substrate_level']:.0f} ATP",
+        f"NADH x P/O = {breakdown['n_nadh']} x "
+        f"{sim.p_o_nadh:.1f} = {breakdown['from_nadh']:.0f} ATP",
+        f"FADH2 x P/O = {breakdown['n_fadh2']} x "
+        f"{sim.p_o_fadh2:.1f} = {breakdown['from_fadh2']:.0f} ATP",
+        "-" * 38,
+        f"TOTAL                       = "
+        f"{breakdown['total']:.0f} ATP/glucose",
+    ]
+    ax_pmf.text(0.02, 0.97, "\n".join(summary_lines),
+                 transform=ax_pmf.transAxes,
+                 fontsize=10, family="monospace", va="top",
+                 bbox=dict(boxstyle="round,pad=0.5",
+                           fc="lavender", ec="black",
+                           lw=0.6, alpha=0.85))
+
+    fig.suptitle(
+        "Mitochondrial electron transport chain - "
+        "substrate redox -> PMF -> ATP transduction",
+        fontsize=13, fontweight="bold", y=0.998)
+    fig.tight_layout(rect=[0, 0, 1, 0.985])
+    out.append(save(fig, "106_etc_complexes.png"))
+
+    # 107_atp_synthase.png
+    fig2 = plt.figure(figsize=(18, 10))
+    gs2 = fig2.add_gridspec(2, 2, height_ratios=[1.0, 1.0],
+                             width_ratios=[1.0, 1.4],
+                             hspace=0.40, wspace=0.30)
+
+    ax_rotor = fig2.add_subplot(gs2[0, 0])
+    f1_radius = 0.6
+    f1_centre = (0.0, 1.5)
+    n_subs = 6
+    for k in range(n_subs):
+        ang0 = 90 + k * (360.0 / n_subs)
+        ang1 = ang0 + 360.0 / n_subs
+        color = "lightcoral" if k % 2 == 0 else "lightblue"
+        wedge = plt.matplotlib.patches.Wedge(
+            f1_centre, f1_radius, ang0, ang1,
+            facecolor=color, edgecolor="black", linewidth=1.0,
+            alpha=0.9)
+        ax_rotor.add_patch(wedge)
+    ax_rotor.text(f1_centre[0], f1_centre[1],
+                   "alpha3 beta3\nF1 head",
+                   ha="center", va="center",
+                   fontsize=10, fontweight="bold")
+    ax_rotor.text(f1_centre[0], f1_centre[1] + f1_radius + 0.1,
+                   "3 catalytic beta-sites cycle  O->L->T  (Boyer 1979)",
+                   ha="center", fontsize=8, style="italic")
+    ax_rotor.plot([0.0, 0.0], [-0.2, 1.0], color="darkgreen",
+                   linewidth=3.5, solid_capstyle="round")
+    ax_rotor.text(0.10, 0.45, "gamma shaft\n(rotates)",
+                   color="darkgreen", fontsize=8, fontweight="bold")
+    c_size = geom.c_ring_size
+    c_radius = 0.5
+    c_centre = (0.0, -0.6)
+    for k in range(c_size):
+        theta = 2.0 * np.pi * k / c_size
+        x_pt = c_centre[0] + c_radius * np.cos(theta)
+        y_pt = c_centre[1] + 0.18 * np.sin(theta)
+        circ = plt.Circle((x_pt, y_pt), 0.10, facecolor="orange",
+                           edgecolor="black", linewidth=0.8)
+        ax_rotor.add_patch(circ)
+    ax_rotor.text(c_centre[0], c_centre[1] - 0.30,
+                   f"F0 c-ring  (c = {c_size})",
+                   ha="center", fontsize=9, fontweight="bold",
+                   color="darkorange")
+    ax_rotor.fill_between([-1.2, 1.2], -0.85, -0.35,
+                           color="khaki", alpha=0.5)
+    ax_rotor.text(-1.0, -0.6, "inner\nmembrane",
+                   fontsize=7, color="goldenrod", va="center")
+    ax_rotor.annotate("", xy=(-0.7, -0.85), xytext=(-0.7, 1.6),
+                       arrowprops=dict(arrowstyle="->",
+                                        color="red", lw=2.5,
+                                        alpha=0.85))
+    ax_rotor.text(-0.85, 0.4, "H+", fontsize=11, color="red",
+                   fontweight="bold", rotation=90)
+    ax_rotor.annotate("", xy=(0.85, 2.4), xytext=(0.5, 1.7),
+                       arrowprops=dict(arrowstyle="->",
+                                        color="green", lw=2.0))
+    ax_rotor.text(1.0, 2.4, "ATP\n(3 per\n360 deg)",
+                   fontsize=10, color="green", fontweight="bold")
+    ax_rotor.plot([0.6, 0.6], [-0.4, 1.6], color="grey",
+                   linewidth=1.5, linestyle="--", alpha=0.6)
+    ax_rotor.text(0.65, 0.6, "b2\nstator", fontsize=7, color="grey")
+    ax_rotor.text(0.0, 0.7, "ADP + Pi -> ATP", ha="center",
+                   fontsize=8, color="navy")
+    ax_rotor.set_xlim(-1.4, 1.4)
+    ax_rotor.set_ylim(-1.1, 2.7)
+    ax_rotor.set_aspect("equal")
+    ax_rotor.set_xticks([])
+    ax_rotor.set_yticks([])
+    ax_rotor.set_title(
+        f"F0F1 ATP synthase  (mammal, c={c_size})\n"
+        f"H+/ATP = {sim.h_per_atp():.2f}   "
+        f"torque = {sim.torque_required_nm():.0f} pN.nm",
+        fontsize=10, fontweight="bold")
+
+    ax_c = fig2.add_subplot(gs2[0, 1])
+    rows = example_c_rings()
+    org_names = [r["name"] for r in rows]
+    cs = [r["c"] for r in rows]
+    h_per_atps = [r["h_per_atp"] for r in rows]
+    xpos = np.arange(len(rows))
+    width = 0.4
+    ax_c.bar(xpos - width / 2, cs, width, label="c-ring size",
+              color="orange", edgecolor="black", linewidth=1.0)
+    ax_c.bar(xpos + width / 2, h_per_atps, width,
+              label="H+ per ATP (= c/3)",
+              color="firebrick", edgecolor="black",
+              linewidth=1.0, alpha=0.85)
+    for i, (cval, hpa) in enumerate(zip(cs, h_per_atps)):
+        ax_c.text(i - width / 2, cval + 0.2, f"{cval}",
+                   ha="center", va="bottom",
+                   fontsize=10, fontweight="bold")
+        ax_c.text(i + width / 2, hpa + 0.2, f"{hpa:.2f}",
+                   ha="center", va="bottom",
+                   fontsize=10, fontweight="bold", color="firebrick")
+    ax_c.set_xticks(xpos)
+    ax_c.set_xticklabels(org_names, fontsize=9, rotation=10)
+    ax_c.set_ylabel("c subunits  /  H+ per ATP", fontsize=10)
+    ax_c.set_title(
+        "c-ring stoichiometry across organisms\n"
+        "Universal F1: 3 ATP per 360 deg (alpha3 beta3 head)",
+        fontsize=10)
+    ax_c.set_ylim(0, 17)
+    ax_c.legend(fontsize=9, loc="upper left")
+    ax_c.grid(True, alpha=0.3, axis="y")
+
+    ax_atp = fig2.add_subplot(gs2[1, 0])
+    n_protons = np.linspace(0.0, 100.0, 401)
+    atp_curve = np.array([sim.atp_per_c_protons(n) for n in n_protons])
+    ax_atp.plot(n_protons, atp_curve, "g-", linewidth=2.2,
+                 label=f"ATP = n_H+ x 3 / c   (c={c_size})")
+    for rev in range(1, 5):
+        n_at_rev = float(rev * c_size)
+        atp_at_rev = float(rev * ATP_PER_REV)
+        ax_atp.scatter([n_at_rev], [atp_at_rev], s=60,
+                        color="darkgreen", zorder=5,
+                        edgecolor="black", linewidth=0.6)
+        ax_atp.annotate(f"{rev}x360\n-> {int(atp_at_rev)} ATP",
+                         (n_at_rev, atp_at_rev),
+                         xytext=(8, -15),
+                         textcoords="offset points", fontsize=8)
+    ax_atp.set_xlabel("H+ translocated through F0", fontsize=10)
+    ax_atp.set_ylabel("ATP synthesized", fontsize=10)
+    ax_atp.set_title(
+        f"F0F1 catalytic stoichiometry\n"
+        f"360 deg rotation x c protons = {ATP_PER_REV} ATP",
+        fontsize=10)
+    ax_atp.legend(fontsize=9, loc="upper left")
+    ax_atp.grid(True, alpha=0.3)
+    ax_atp.set_xlim(0, 100)
+    ax_atp.set_ylim(0, max(atp_curve) * 1.10)
+
+    ax_t = fig2.add_subplot(gs2[1, 1])
+    out_sim = sim.simulate(n_nadh=100.0, n_fadh2=20.0,
+                            n_steps=300, dt=1.0)
+    t = out_sim["t"]
+    ax_t.plot(t, out_sim["nadh"], color="steelblue",
+                linewidth=2.0, label="NADH (matrix)")
+    ax_t.plot(t, out_sim["fadh2"], color="seagreen",
+                linewidth=2.0, label="FADH2 (matrix)")
+    ax_t2 = ax_t.twinx()
+    ax_t2.plot(t, out_sim["h_pool"], color="firebrick",
+                 linewidth=2.0, alpha=0.7,
+                 label="H+ pool (IMS-matrix)")
+    ax_t2.plot(t, out_sim["atp"], color="darkgreen",
+                 linewidth=2.5, alpha=0.95,
+                 label="ATP synthesised")
+    ax_t.set_xlabel("time (arb)", fontsize=10)
+    ax_t.set_ylabel("substrate (NADH, FADH2)",
+                     fontsize=10, color="steelblue")
+    ax_t2.set_ylabel("H+ pool  /  ATP synthesised",
+                       fontsize=10, color="firebrick")
+    ax_t.set_title(
+        "Coupled bioenergetic kinetics\n"
+        "NADH -> H+ pumping (ETC) -> H+ flow through F0 -> ATP (F1)",
+        fontsize=10)
+    h1, l1 = ax_t.get_legend_handles_labels()
+    h2, l2 = ax_t2.get_legend_handles_labels()
+    ax_t.legend(h1 + h2, l1 + l2, fontsize=8, loc="upper right")
+    ax_t.grid(True, alpha=0.3)
+
+    fig2.suptitle(
+        "F0F1 ATP synthase - proton motive force converts to ATP "
+        "via rotor torque (Boyer 1979 / Walker 1997)",
+        fontsize=13, fontweight="bold", y=0.998)
+    fig2.tight_layout(rect=[0, 0, 1, 0.985])
+    out.append(save(fig2, "107_atp_synthase.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Measurement / observer / "consciousness" — substrate decoherence
 # ---------------------------------------------------------------------------
 
@@ -7532,6 +8244,1496 @@ def render_measurement_observer() -> list[str]:
     return out
 
 
+def render_allometric() -> list[str]:
+    """Produce 114_kleibers_law.png and 115_vascular_fractal.png.
+
+    114: Log-log plot of basal metabolic rate vs body mass for ~30 mammals
+         spanning Etruscan shrew (1.8 g) to blue whale (150 t), plus the
+         3/4-power Kleiber fit line and the alternative naive 2/3 surface-
+         to-volume line for comparison.  Annotates the WBE empirical slope
+         and R^2.  Inset: heart rate ~ M^(-1/4) and lifespan ~ M^(+1/4)
+         for the same mass range.
+    115: West-Brown-Enquist fractal vascular tree (binary, 12 levels) with
+         beta = 2^(-1/2) radius scaling and gamma = 2^(-1/3) length scaling
+         (space-filling).  Side panel shows total network volume per level
+         and the b = d/(d+1) derivation table for d = 1, 2, 3, 4.
+    """
+    from src.stiff_medium.allometric_substrate import (
+        BRANCHING_RATIO_N,
+        CAPILLARY_EXPONENT,
+        HEART_RATE_EXPONENT,
+        KLEIBER_EXPONENT,
+        KLEIBER_PREFACTOR_W,
+        LIFESPAN_EXPONENT,
+        MAMMAL_DATA,
+        SPACE_DIMENSION_D,
+        SURFACE_GEOMETRIC_EXPONENT,
+        AllometricGeometry,
+        AllometricSimulator,
+    )
+
+    out: list[str] = []
+    sim = AllometricSimulator()
+
+    # ----------------------------- 114: Kleiber + heart rate + lifespan
+    M_data, B_data, names = sim.kleiber_data()
+    fit = sim.fit_kleiber_slope(M_data, B_data)
+
+    fig = plt.figure(figsize=(13, 8))
+    gs = fig.add_gridspec(
+        2, 2, width_ratios=[2.4, 1.0], height_ratios=[1.0, 1.0],
+        hspace=0.32, wspace=0.28,
+    )
+    ax = fig.add_subplot(gs[:, 0])
+
+    # Mammal data points
+    ax.loglog(
+        M_data, B_data, "o", color="darkred", markersize=8,
+        markeredgecolor="black", markeredgewidth=0.7,
+        label=f"empirical mammals (N={len(M_data)})",
+    )
+
+    # Annotate a few notable species
+    for label_name in ("Etruscan shrew", "House mouse", "Human",
+                       "Elephant (Afr.)", "Blue whale"):
+        idx = next(
+            (i for i, d in enumerate(MAMMAL_DATA) if d["name"] == label_name),
+            None,
+        )
+        if idx is not None:
+            ax.annotate(
+                label_name,
+                xy=(M_data[idx], B_data[idx]),
+                xytext=(8, 6), textcoords="offset points",
+                fontsize=8.5, color="black",
+                arrowprops=dict(arrowstyle="-", lw=0.5, color="gray"),
+            )
+
+    # Best-fit and theoretical 3/4 line
+    M_line = np.geomspace(M_data.min() * 0.5, M_data.max() * 2.0, 200)
+    B_fit = fit["prefactor_W"] * M_line ** fit["slope"]
+    B_3_4 = KLEIBER_PREFACTOR_W * M_line ** KLEIBER_EXPONENT
+    B_2_3 = (
+        KLEIBER_PREFACTOR_W * (70.0 ** (KLEIBER_EXPONENT - SURFACE_GEOMETRIC_EXPONENT))
+        * M_line ** SURFACE_GEOMETRIC_EXPONENT
+    )
+
+    ax.loglog(
+        M_line, B_fit, "-", color="tab:blue", lw=2.4,
+        label=(
+            f"empirical fit  slope = {fit['slope']:.3f}  "
+            f"R$^2$ = {fit['r2']:.3f}"
+        ),
+    )
+    ax.loglog(
+        M_line, B_3_4, "--", color="darkgreen", lw=1.8,
+        label="WBE prediction  B $\\propto$ M$^{3/4}$",
+    )
+    ax.loglog(
+        M_line, B_2_3, ":", color="gray", lw=1.6,
+        label="naive surface/volume  B $\\propto$ M$^{2/3}$",
+    )
+
+    ax.set_xlabel("body mass M  [kg]", fontsize=11)
+    ax.set_ylabel("basal metabolic rate B  [W]", fontsize=11)
+    ax.set_title(
+        "Kleiber's law:  metabolic rate vs body mass across mammals\n"
+        f"slope {fit['slope']:.3f} matches WBE 3/4, not geometric 2/3  "
+        f"(d / (d+1) with d = {SPACE_DIMENSION_D})",
+        fontsize=11.5,
+    )
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(loc="upper left", fontsize=9, framealpha=0.92)
+
+    # --- Inset top right: heart rate ~ M^(-1/4)
+    ax_hr = fig.add_subplot(gs[0, 1])
+    M_hr = np.geomspace(0.005, 1.0e5, 100)
+    f_bpm = np.array([sim.heart_rate_bpm(m) for m in M_hr])
+    ax_hr.loglog(M_hr, f_bpm, "-", color="tab:red", lw=2.0,
+                 label="f $\\propto$ M$^{-1/4}$")
+    # Reference points
+    ref = [
+        ("mouse", 0.020),
+        ("human", 70.0),
+        ("elephant", 5000.0),
+        ("blue whale", 150_000.0),
+    ]
+    for name, m in ref:
+        ax_hr.plot(m, sim.heart_rate_bpm(m), "ko", markersize=5)
+        ax_hr.annotate(
+            f"{name}\n{sim.heart_rate_bpm(m):.0f} bpm",
+            xy=(m, sim.heart_rate_bpm(m)),
+            xytext=(4, 4), textcoords="offset points",
+            fontsize=7,
+        )
+    ax_hr.set_xlabel("M [kg]", fontsize=9)
+    ax_hr.set_ylabel("heart rate [bpm]", fontsize=9)
+    ax_hr.set_title("heart rate $\\propto$ M$^{-1/4}$", fontsize=10)
+    ax_hr.grid(True, which="both", alpha=0.3)
+    ax_hr.tick_params(labelsize=8)
+
+    # --- Inset bottom right: lifespan ~ M^(+1/4)
+    ax_T = fig.add_subplot(gs[1, 1])
+    T_yr = np.array([sim.lifespan_yr(m) for m in M_hr])
+    ax_T.loglog(M_hr, T_yr, "-", color="tab:purple", lw=2.0,
+                label="T $\\propto$ M$^{+1/4}$")
+    for name, m in ref:
+        ax_T.plot(m, sim.lifespan_yr(m), "ko", markersize=5)
+        ax_T.annotate(
+            f"{name}\n{sim.lifespan_yr(m):.0f} yr",
+            xy=(m, sim.lifespan_yr(m)),
+            xytext=(4, 4), textcoords="offset points",
+            fontsize=7,
+        )
+    ax_T.set_xlabel("M [kg]", fontsize=9)
+    ax_T.set_ylabel("lifespan [yr]", fontsize=9)
+    ax_T.set_title(
+        "lifespan $\\propto$ M$^{+1/4}$\n"
+        "(f x T $\\sim$ const $\\Rightarrow$ ~10$^9$ heartbeats / life)",
+        fontsize=10,
+    )
+    ax_T.grid(True, which="both", alpha=0.3)
+    ax_T.tick_params(labelsize=8)
+
+    fig.suptitle(
+        "Allometric scaling laws — universal exponents from substrate-optimised "
+        "fractal vasculature (West-Brown-Enquist 1997)",
+        fontsize=12, y=0.995,
+    )
+    out.append(save(fig, "114_kleibers_law.png"))
+
+    # ------------------------ 115: vascular fractal tree + WBE derivation
+    geom_viz = AllometricGeometry(
+        n_levels=12, branching_n=BRANCHING_RATIO_N
+    )
+
+    fig = plt.figure(figsize=(14, 8))
+    gs = fig.add_gridspec(
+        2, 2, width_ratios=[1.5, 1.0], height_ratios=[1.0, 1.0],
+        hspace=0.34, wspace=0.28,
+    )
+    ax_tree = fig.add_subplot(gs[:, 0])
+    ax_vol = fig.add_subplot(gs[0, 1])
+    ax_table = fig.add_subplot(gs[1, 1])
+
+    # ---- Tree
+    edges = geom_viz.tree_edges_2d(spread_deg=42.0)
+    cmap = plt.cm.viridis
+    max_lvl = geom_viz.n_levels - 1
+    for (x0, y0), (x1, y1), lvl in edges:
+        # vessel diameter ~ beta^level (tapered linewidth)
+        lw = max(0.4, 4.5 * (geom_viz.beta() ** lvl) ** 0.7)
+        color = cmap(lvl / max_lvl)
+        ax_tree.plot([x0, x1], [y0, y1], "-", color=color, linewidth=lw,
+                     solid_capstyle="round")
+    # mark capillaries (terminal endpoints) with dots
+    for (_, _), (x1, y1), lvl in edges:
+        if lvl == max_lvl:
+            ax_tree.plot(x1, y1, "o", color="firebrick", markersize=2,
+                         markeredgewidth=0)
+
+    # heart marker at the root
+    ax_tree.plot(0.0, 0.0, "s", color="black", markersize=12)
+    ax_tree.annotate(
+        "heart\n(root, level 0)", xy=(0.0, 0.0), xytext=(10, 10),
+        textcoords="offset points", fontsize=9,
+    )
+    ax_tree.annotate(
+        f"capillaries\n(N = {geom_viz.n_capillaries():,})",
+        xy=(0.0, edges[-1][1][1]),
+        xytext=(0.0, edges[-1][1][1] - 0.4),
+        ha="center", fontsize=9,
+        arrowprops=dict(arrowstyle="->", lw=0.7, color="gray"),
+    )
+    ax_tree.set_aspect("equal")
+    ax_tree.set_title(
+        "West-Brown-Enquist fractal vascular tree\n"
+        f"binary branching (n = {BRANCHING_RATIO_N}),  N = {geom_viz.n_levels} levels,  "
+        f"$\\beta$ = n$^{{-1/2}}$ = {geom_viz.beta():.4f},  "
+        f"$\\gamma$ = n$^{{-1/d}}$ = {geom_viz.gamma():.4f} (space-filling)",
+        fontsize=11,
+    )
+    ax_tree.set_xticks([])
+    ax_tree.set_yticks([])
+    for spine in ax_tree.spines.values():
+        spine.set_visible(False)
+
+    # ---- Volume distribution per level
+    levels = np.arange(geom_viz.n_levels)
+    vol_per_level = np.array([
+        geom_viz.total_volume_at_level_m3(k) for k in levels
+    ])
+    n_vessels = np.array([geom_viz.vessels_at_level(k) for k in levels])
+    ax_vol.bar(levels, vol_per_level / vol_per_level.max(),
+               color="steelblue", alpha=0.85, label="V_k / V_max")
+    ax_vol2 = ax_vol.twinx()
+    ax_vol2.semilogy(levels, n_vessels, "o-", color="crimson", lw=1.6,
+                     label="N_k = n$^k$")
+    ax_vol.set_xlabel("level k (root=0, capillaries=N-1)", fontsize=9)
+    ax_vol.set_ylabel("volume fraction (linear)", fontsize=9, color="steelblue")
+    ax_vol2.set_ylabel("vessel count (log)", fontsize=9, color="crimson")
+    ax_vol.tick_params(axis="y", labelcolor="steelblue", labelsize=8)
+    ax_vol2.tick_params(axis="y", labelcolor="crimson", labelsize=8)
+    ax_vol.tick_params(axis="x", labelsize=8)
+    ax_vol.set_title(
+        "Per-level volume vs vessel count\n"
+        "(area-preserving: $\\sum_k$ A_k = const)",
+        fontsize=10,
+    )
+    ax_vol.grid(True, axis="y", alpha=0.3)
+
+    # ---- WBE derivation table
+    ax_table.axis("off")
+    rows = [
+        ("d = 1 (linear)",   "1 / 2  = 0.500"),
+        ("d = 2 (surface)",  "2 / 3  $\\approx$ 0.667"),
+        ("d = 3 (volume)",   "3 / 4  = 0.750  $\\Leftarrow$ Kleiber"),
+        ("d = 4 (West 1999)", "4 / 5  = 0.800"),
+    ]
+    table = ax_table.table(
+        cellText=[list(r) for r in rows],
+        colLabels=["space dimension", "exponent  b = d / (d + 1)"],
+        cellLoc="center", loc="center", colWidths=[0.45, 0.55],
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.0, 1.6)
+    # Highlight the d=3 row
+    for j in (0, 1):
+        cell = table[(3, j)]
+        cell.set_facecolor("#fff3a3")
+        cell.set_text_props(weight="bold")
+    ax_table.set_title(
+        "WBE derivation:  b = d / (d + 1)\n"
+        "fractal network in d-dim space + 1 branching index",
+        fontsize=10.5,
+    )
+
+    fig.suptitle(
+        "Vascular fractal $\\rightarrow$ Kleiber 3/4: substrate strain field "
+        "delivers nutrients into a 3-volume from a single root\n"
+        f"capillary radius {geom_viz.capillary_radius_m()*1e6:.1f} $\\mu$m "
+        f"(invariant across mammals);  total levels {geom_viz.n_levels}; "
+        f"network volume {geom_viz.total_blood_volume_m3()*1e6:.1f} cm$^3$",
+        fontsize=12, y=0.995,
+    )
+    out.append(save(fig, "115_vascular_fractal.png"))
+
+    return out
+
+
+def render_brain() -> list[str]:
+    """112_brain_oscillations.png + 113_default_mode_network.png."""
+    from src.stiff_medium.brain_network_substrate import (
+        AVALANCHE_SLOPE_EXACT,
+        BRAIN_BANDS_HZ,
+        BrainNetworkGeometry,
+        BrainNetworkSimulator,
+    )
+    out: list[str] = []
+
+    # ------------------------------------------------------------------
+    # 112_brain_oscillations.png
+    #   Panel A: 5-band power spectrum (1/f^β + Lorentzian band peaks)
+    #   Panel B: Kuramoto order parameter r vs K/K_c
+    #   Panel C: Avalanche size PDF with -3/2 slope (critical brain)
+    #   Panel D: time series of r(t) for sub/super-critical K
+    # ------------------------------------------------------------------
+    geom = BrainNetworkGeometry(n_nodes=80, k_neighbors=6,
+                                p_rewire=0.10, seed=42)
+    sim = BrainNetworkSimulator(
+        geometry=geom, omega_center_hz=10.0, omega_spread_hz=2.0,
+        duration_s=1.5, dt_s=2.0e-3, seed=11,
+    )
+    sigma_sw = geom.small_world_sigma(n_random=3, max_pairs=60)
+    K_c = sim.critical_coupling()
+
+    fig = plt.figure(figsize=(16, 11))
+    gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.30)
+
+    # ----- A: 5-band spectrum -----------------------------------------
+    ax_a = fig.add_subplot(gs[0, 0])
+    f, p = sim.synthetic_lfp_spectrum(
+        n_freqs=800, beta=1.5,
+        band_amps={"delta": 0.50, "theta": 0.55, "alpha": 1.40,
+                   "beta": 0.45, "gamma": 0.30},
+    )
+    ax_a.loglog(f, p, color="black", lw=1.6, label="LFP power (synthetic)")
+    band_colors = {
+        "delta": "#1f3a93", "theta": "#3498db", "alpha": "#27ae60",
+        "beta":  "#f39c12", "gamma": "#c0392b",
+    }
+    for band, (lo, hi) in BRAIN_BANDS_HZ.items():
+        ax_a.axvspan(lo, hi, alpha=0.14, color=band_colors[band],
+                     label=f"{band} {lo:.0f}-{hi:.0f} Hz")
+    ax_a.set_xlabel("frequency [Hz]", fontsize=11)
+    ax_a.set_ylabel("power [arb]", fontsize=11)
+    ax_a.set_xlim(1.0, 120.0)
+    ax_a.set_title(
+        "Brain LFP power spectrum: 1/f$^{1.5}$ background + 5 canonical bands\n"
+        "delta / theta / alpha / beta / gamma",
+        fontsize=11,
+    )
+    ax_a.legend(fontsize=8, loc="lower left", framealpha=0.92)
+    ax_a.grid(True, alpha=0.3, which="both")
+
+    # ----- B: Kuramoto r(K/K_c) phase transition ----------------------
+    ax_b = fig.add_subplot(gs[0, 1])
+    K_factors = np.array([0.05, 0.2, 0.5, 0.8, 1.0, 1.3, 1.7, 2.5,
+                          4.0, 7.0, 12.0, 20.0])
+    Ks = K_factors * K_c
+    _, rs = sim.order_parameter_vs_K(
+        K_values=Ks, duration_s=0.6, dt_s=4.0e-3, tail_fraction=0.4,
+    )
+    ax_b.plot(K_factors, rs, "o-", color="purple", lw=2.0, ms=8,
+              label="simulated $r(K)$")
+    ax_b.axvline(1.0, color="black", ls="--", lw=1.2,
+                 label=f"$K_c = 2\\gamma = {K_c:.1f}$ rad/s")
+    ax_b.fill_between([0.04, 1.0], 0.0, 1.0, color="lightblue",
+                      alpha=0.18, label="incoherent (r$\\to$0)")
+    ax_b.fill_between([1.0, K_factors.max() * 1.2], 0.0, 1.0,
+                      color="khaki", alpha=0.18,
+                      label="synchronised (r$\\to$1)")
+    ax_b.set_xlabel("$K / K_c$", fontsize=11)
+    ax_b.set_ylabel("Kuramoto order $r$", fontsize=11)
+    ax_b.set_xscale("log")
+    ax_b.set_xlim(K_factors.min() * 0.8, K_factors.max() * 1.2)
+    ax_b.set_ylim(-0.02, 1.05)
+    ax_b.set_title(
+        "Kuramoto synchronisation transition on small-world brain network\n"
+        f"$N={geom.n_nodes}$, $\\langle k \\rangle = {geom.mean_degree():.1f}$, "
+        f"$\\sigma_{{SW}} = {sigma_sw:.2f}$",
+        fontsize=11,
+    )
+    ax_b.legend(fontsize=8, loc="lower right", framealpha=0.92)
+    ax_b.grid(True, alpha=0.3, which="both")
+
+    # ----- C: avalanche -3/2 slope ------------------------------------
+    ax_c = fig.add_subplot(gs[1, 0])
+    sizes = sim.simulate_avalanches(n_avalanches=12000, branching=1.0,
+                                    max_size=20000)
+    slope, centers, pdf = sim.avalanche_log_log_slope(
+        sizes, s_min=2, s_max=5000, n_bins=24,
+    )
+    keep = pdf > 0
+    ax_c.loglog(centers[keep], pdf[keep], "o", color="darkred", ms=7,
+                label=f"simulated PDF, slope = {slope:.2f}")
+    ref_x = np.array([2.0, 5000.0])
+    if int(keep.sum()) > 0:
+        anchor_y = pdf[keep][0]
+        anchor_x = centers[keep][0]
+        ref_y = ref_x ** AVALANCHE_SLOPE_EXACT
+        ref_y = ref_y * (anchor_y / (anchor_x ** AVALANCHE_SLOPE_EXACT))
+        ax_c.loglog(ref_x, ref_y, "--", color="black", lw=1.5,
+                    label="$P(s) \\propto s^{-3/2}$ (Beggs-Plenz 2003)")
+    ax_c.set_xlabel("avalanche size $s$ (events)", fontsize=11)
+    ax_c.set_ylabel("$P(s)$", fontsize=11)
+    ax_c.set_title(
+        "Critical-brain neural avalanches: $P(s) \\propto s^{-3/2}$\n"
+        "(Galton-Watson critical branching, $\\sigma = 1$)",
+        fontsize=11,
+    )
+    ax_c.legend(fontsize=9, loc="upper right", framealpha=0.92)
+    ax_c.grid(True, alpha=0.3, which="both")
+
+    # ----- D: time series of order parameter r(t) ---------------------
+    ax_d = fig.add_subplot(gs[1, 1])
+    res_sub = sim.simulate_kuramoto(coupling_K=0.3 * K_c)
+    res_sup = sim.simulate_kuramoto(coupling_K=8.0 * K_c)
+    ax_d.plot(res_sub["t_s"] * 1000.0, res_sub["order_r"],
+              color="tab:blue", lw=1.4,
+              label=f"sub-critical $K=0.3K_c$: $\\bar r$ = "
+                    f"{res_sub['order_r'][-100:].mean():.2f}")
+    ax_d.plot(res_sup["t_s"] * 1000.0, res_sup["order_r"],
+              color="tab:red", lw=1.4,
+              label=f"super-critical $K=8K_c$: $\\bar r$ = "
+                    f"{res_sup['order_r'][-100:].mean():.2f}")
+    ax_d.axhline(1.0, color="grey", ls=":", lw=0.8)
+    ax_d.set_xlabel("time [ms]", fontsize=11)
+    ax_d.set_ylabel("Kuramoto order $r(t)$", fontsize=11)
+    ax_d.set_ylim(-0.02, 1.05)
+    ax_d.set_title(
+        "Order parameter $r(t)$: sub- vs super-critical coupling\n"
+        f"natural-frequency Lorentzian: $f_0 = {sim.omega_center_hz:.1f}$ Hz, "
+        f"$\\gamma = {sim.omega_spread_hz:.1f}$ Hz",
+        fontsize=11,
+    )
+    ax_d.legend(fontsize=9, loc="lower right", framealpha=0.92)
+    ax_d.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Brain network dynamics from substrate: small-world Kuramoto + 5 bands "
+        "+ critical avalanches\n"
+        "node = mesoscopic strain patch, edge = white-matter coupling, "
+        "$\\sigma_{SW}$ > 1 (small-world), $P(s) \\propto s^{-3/2}$ (criticality)",
+        fontsize=13,
+    )
+    out.append(save(fig, "112_brain_oscillations.png"))
+
+    # ------------------------------------------------------------------
+    # 113_default_mode_network.png
+    #   Panel A: schematic 3D brain with DMN region positions and links
+    #   Panel B: DMN adjacency matrix
+    #   Panel C: Kuramoto on the 6-region DMN sub-graph (synchronisation)
+    # ------------------------------------------------------------------
+    names, coords, A_dmn = geom.dmn_subgraph()
+
+    fig = plt.figure(figsize=(16, 8))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.4, 1.0, 1.4],
+                          wspace=0.30)
+
+    # ----- A: 3D DMN schematic ----------------------------------------
+    ax_a = fig.add_subplot(gs[0, 0], projection="3d")
+    # Draw a translucent brain "envelope" (approx ellipsoid)
+    u = np.linspace(0.0, 2.0 * np.pi, 32)
+    v = np.linspace(0.0, np.pi, 16)
+    Xb = 1.05 * np.outer(np.cos(u), np.sin(v))
+    Yb = 1.15 * np.outer(np.sin(u), np.sin(v))
+    Zb = 0.85 * np.outer(np.ones_like(u), np.cos(v))
+    ax_a.plot_surface(Xb, Yb, Zb, color="lightgray", alpha=0.10,
+                      linewidth=0, antialiased=True)
+
+    # Region color & size
+    region_colors = {
+        "mPFC":             "#e74c3c",
+        "PCC":              "#9b59b6",
+        "L Angular Gyrus":  "#3498db",
+        "R Angular Gyrus":  "#3498db",
+        "L Hippocampus":    "#27ae60",
+        "R Hippocampus":    "#27ae60",
+    }
+    # Edges
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            if A_dmn[i, j]:
+                ax_a.plot(
+                    [coords[i, 0], coords[j, 0]],
+                    [coords[i, 1], coords[j, 1]],
+                    [coords[i, 2], coords[j, 2]],
+                    color="black", lw=1.6, alpha=0.55,
+                )
+    # Nodes
+    for i, n in enumerate(names):
+        ax_a.scatter(*coords[i], s=320, c=region_colors[n],
+                     edgecolors="black", linewidths=1.5, depthshade=True)
+        ax_a.text(coords[i, 0] * 1.10, coords[i, 1] * 1.10,
+                  coords[i, 2] * 1.10 + 0.10,
+                  n, fontsize=10, fontweight="bold", ha="center")
+    ax_a.set_xlim(-1.2, 1.2)
+    ax_a.set_ylim(-1.2, 1.2)
+    ax_a.set_zlim(-1.0, 1.0)
+    ax_a.set_xlabel("x (L-R)")
+    ax_a.set_ylabel("y (P-A)")
+    ax_a.set_zlabel("z (I-S)")
+    ax_a.set_title(
+        "Default Mode Network (Raichle 2001)\n"
+        "task-negative resting-state hub network",
+        fontsize=11,
+    )
+    ax_a.view_init(elev=18, azim=-65)
+
+    # ----- B: DMN adjacency matrix ------------------------------------
+    ax_b = fig.add_subplot(gs[0, 1])
+    ax_b.imshow(A_dmn, cmap="Reds", vmin=0, vmax=1)
+    ax_b.set_xticks(range(len(names)))
+    ax_b.set_yticks(range(len(names)))
+    ax_b.set_xticklabels(names, rotation=45, ha="right", fontsize=9)
+    ax_b.set_yticklabels(names, fontsize=9)
+    for i in range(len(names)):
+        for j in range(len(names)):
+            txt = "1" if A_dmn[i, j] else "0"
+            ax_b.text(j, i, txt, ha="center", va="center",
+                      color=("white" if A_dmn[i, j] else "black"),
+                      fontsize=9)
+    ax_b.set_title(
+        "DMN adjacency matrix\n"
+        f"6 regions, {int(A_dmn.sum() // 2)} undirected edges",
+        fontsize=11,
+    )
+
+    # ----- C: Kuramoto sync on the 6-node DMN -------------------------
+    # Build a tiny isolated geometry from the DMN sub-graph
+    dmn_geom = BrainNetworkGeometry.__new__(BrainNetworkGeometry)
+    dmn_geom.n_nodes = len(names)
+    dmn_geom.k_neighbors = 4
+    dmn_geom.p_rewire = 0.0
+    dmn_geom.seed = 5
+    dmn_geom.dmn_regions = list(geom.dmn_regions)
+    dmn_geom.adjacency = A_dmn
+    dmn_geom.coords = coords
+    dmn_sim = BrainNetworkSimulator(
+        geometry=dmn_geom, omega_center_hz=10.0, omega_spread_hz=1.0,
+        duration_s=2.0, dt_s=2.0e-3, seed=23,
+    )
+    K_c_dmn = dmn_sim.critical_coupling()
+
+    ax_c = fig.add_subplot(gs[0, 2])
+    res_low  = dmn_sim.simulate_kuramoto(coupling_K=0.2 * K_c_dmn)
+    res_high = dmn_sim.simulate_kuramoto(coupling_K=6.0 * K_c_dmn)
+    ax_c.plot(res_low["t_s"] * 1000.0, res_low["order_r"],
+              color="tab:blue", lw=1.6,
+              label=f"task / desync $K=0.2K_c$: $\\bar r$ = "
+                    f"{res_low['order_r'][-50:].mean():.2f}")
+    ax_c.plot(res_high["t_s"] * 1000.0, res_high["order_r"],
+              color="tab:red", lw=1.6,
+              label=f"rest / sync $K=6K_c$: $\\bar r$ = "
+                    f"{res_high['order_r'][-50:].mean():.2f}")
+    ax_c.axhline(1.0, color="grey", ls=":", lw=0.8)
+    ax_c.set_xlabel("time [ms]", fontsize=11)
+    ax_c.set_ylabel("DMN Kuramoto order $r(t)$", fontsize=11)
+    ax_c.set_ylim(-0.02, 1.05)
+    ax_c.set_title(
+        "DMN coherence: rest (high $K$) vs task (low $K$)\n"
+        f"$K_c = 2\\gamma = {K_c_dmn:.1f}$ rad/s",
+        fontsize=11,
+    )
+    ax_c.legend(fontsize=9, loc="lower right", framealpha=0.92)
+    ax_c.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Default Mode Network: mPFC + PCC + bilateral angular gyrus + "
+        "bilateral hippocampus\n"
+        "task-negative substrate hub; coherence indexes resting-state engagement",
+        fontsize=13,
+    )
+    out.append(save(fig, "113_default_mode_network.png"))
+
+    return out
+
+
+def render_cancer() -> list[str]:
+    """Produce 110_tumor_growth.png and 111_hallmarks_cancer.png.
+
+    110: Four-panel growth + treatment + multistage incidence overview.
+         Top-left  : Gompertz N(t) vs unbounded exponential N(t) on
+                     semilog-y; Gompertz saturates at K, exponential blows up.
+         Top-right : Combined Gompertz growth interrupted by 6 log-kill
+                     chemotherapy pulses (99% kill per dose, 14-day cycle).
+         Bottom-L  : Armitage-Doll multistage incidence I(age) ~ age^5
+                     for several n_hits (log-log).
+         Bottom-R  : Knudson 2-hit retinoblastoma age distribution
+                     (sporadic vs hereditary).
+    111: 8 hallmarks of cancer (Hanahan-Weinberg 2011) arranged radially
+         around a central "cancer cell" node, plus a 5-stage adenoma-
+         carcinoma sequence bar showing how many hallmarks are acquired
+         by each stage.
+    """
+    import math as _math
+
+    from src.stiff_medium.cancer_substrate import (
+        ARMITAGE_DOLL_HITS_DEFAULT,
+        HALLMARKS,
+        KNUDSON_PEAK_AGE_HEREDITARY_YR,
+        KNUDSON_PEAK_AGE_SPORADIC_YR,
+        N_HALLMARKS,
+        STAGES,
+        CancerGeometry,
+        CancerSimulator,
+    )
+
+    out: list[str] = []
+
+    geom = CancerGeometry()
+    sim = CancerSimulator(geometry=geom)
+
+    # ---------------- 110: Tumour growth + treatment ---------------------
+    fig = plt.figure(figsize=(14, 10))
+    gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 1.0],
+                           hspace=0.40, wspace=0.30)
+
+    # Panel A: Gompertz vs exponential
+    ax_grow = fig.add_subplot(gs[0, 0])
+    t_days = np.linspace(0.0, 600.0, 800)
+    N_gomp = sim.gompertz_growth(t_days, N0=1.0)
+    a = sim.a_per_day
+    K = sim.K_cells
+    # For visual comparison at the early-time slope, choose r so the
+    # exponential matches the Gompertz population at t = 200 d.
+    N_gomp_200 = float(sim.gompertz_growth(np.array([200.0]), N0=1.0)[0])
+    r_eff = _math.log(N_gomp_200) / 200.0
+    # Compute exponential with overflow-safe clamp
+    safe_arg = np.minimum(r_eff * t_days, 35.0)   # exp(35) ~ 1.6e15
+    N_exp = 1.0 * np.exp(safe_arg)
+
+    ax_grow.semilogy(t_days, N_gomp, color="tab:blue", linewidth=2.4,
+                     label=f"Gompertz (a = {a:.3f}/d, K = {K:.0e} cells)")
+    ax_grow.semilogy(t_days, N_exp, color="tab:red", linewidth=2.0,
+                     linestyle="--",
+                     label=f"exponential (r = {r_eff:.3f}/d)")
+    ax_grow.axhline(K, color="black", linestyle=":", linewidth=1.0,
+                    alpha=0.7, label=f"K = {K:.0e} cells")
+    ax_grow.axhline(1.0e9, color="gray", linestyle=":", linewidth=0.8,
+                    alpha=0.6, label="1 cm^3 tumour ~ 1e9 cells")
+    ax_grow.set_xlabel("time [days]", fontsize=10)
+    ax_grow.set_ylabel("tumour cells N(t)", fontsize=10)
+    ax_grow.set_ylim(1.0e0, 1.0e14)
+    ax_grow.set_title(
+        "Gompertz growth saturates;  exponential blows up\n"
+        "dN/dt = N a ln(K/N)  vs  dN/dt = r N",
+        fontsize=10,
+    )
+    ax_grow.legend(loc="lower right", fontsize=8, framealpha=0.92)
+    ax_grow.grid(True, alpha=0.3, which="both")
+
+    # Panel B: Combined growth + log-kill treatment response
+    ax_treat = fig.add_subplot(gs[0, 1])
+    t_treat = np.linspace(0.0, 400.0, 1500)
+    res = sim.combined_growth_and_treatment(
+        t_treat,
+        N0=1.0,
+        treatment_start_day=180.0,
+        n_doses=6,
+        kill_fraction_per_dose=0.99,
+    )
+    untreated = sim.gompertz_growth(t_treat, N0=1.0)
+    ax_treat.semilogy(t_treat, np.maximum(untreated, 1e-3),
+                      color="tab:blue", linewidth=1.8,
+                      alpha=0.55, label="untreated Gompertz")
+    ax_treat.semilogy(t_treat, np.maximum(res["N"], 1e-3),
+                      color="tab:purple", linewidth=2.4,
+                      label=f"6 doses, 99%/dose, every {sim.dose_interval_days:.0f} d")
+    for d_t in res["dose_times"]:
+        ax_treat.axvline(d_t, color="tab:red", linestyle=":",
+                          linewidth=0.9, alpha=0.55)
+    ax_treat.axhline(K, color="black", linestyle=":", linewidth=1.0,
+                     alpha=0.7, label=f"K = {K:.0e} cells")
+    ax_treat.axhline(1.0, color="gray", linestyle="--", linewidth=0.8,
+                     alpha=0.6, label="1 cell (cure threshold)")
+    ax_treat.text(res["dose_times"][0] + 1.0, 1.0e11,
+                  "chemo pulses",
+                  rotation=90, color="tab:red",
+                  fontsize=8, va="top")
+    ax_treat.set_xlabel("time [days]", fontsize=10)
+    ax_treat.set_ylabel("tumour cells N(t)", fontsize=10)
+    ax_treat.set_ylim(1.0e-3, 1.0e14)
+    ax_treat.set_title(
+        "Skipper-Schabel log-kill chemotherapy on a Gompertz tumour\n"
+        "each dose removes a constant fraction; tumour regrows between doses",
+        fontsize=10,
+    )
+    ax_treat.legend(loc="lower right", fontsize=8, framealpha=0.92)
+    ax_treat.grid(True, alpha=0.3, which="both")
+
+    # Panel C: Armitage-Doll log-log incidence
+    ax_inc = fig.add_subplot(gs[1, 0])
+    age = np.linspace(20.0, 90.0, 200)
+    palette_n = plt.cm.viridis(np.linspace(0.15, 0.85, 4))
+    for n_hits, color in zip((4, 5, 6, 7), palette_n):
+        I = sim.armitage_doll_incidence(age, n_hits=n_hits)
+        ax_inc.loglog(age, I, color=color, linewidth=2.0,
+                       label=f"n = {n_hits} (slope = {n_hits-1})")
+    ax_inc.set_xlabel("age [years, log scale]", fontsize=10)
+    ax_inc.set_ylabel("incidence rate I(age) [arb, log scale]", fontsize=10)
+    ax_inc.set_title(
+        f"Armitage-Doll multistage carcinogenesis\n"
+        f"I(age) ~ age^(n-1);  default n = {ARMITAGE_DOLL_HITS_DEFAULT} -> slope 5",
+        fontsize=10,
+    )
+    ax_inc.legend(loc="lower right", fontsize=8, framealpha=0.92)
+    ax_inc.grid(True, alpha=0.3, which="both")
+
+    # Panel D: Knudson 2-hit (sporadic vs hereditary retinoblastoma)
+    ax_knud = fig.add_subplot(gs[1, 1])
+    age_k = np.linspace(0.05, 80.0, 800)
+    pdf_sp = sim.knudson_two_hit_sporadic_pdf(age_k)
+    pdf_he = sim.knudson_two_hit_hereditary_pdf(age_k)
+    pdf_sp_n = pdf_sp / pdf_sp.max() if pdf_sp.max() > 0 else pdf_sp
+    pdf_he_n = pdf_he / pdf_he.max() if pdf_he.max() > 0 else pdf_he
+    ax_knud.plot(age_k, pdf_he_n, color="tab:red", linewidth=2.4,
+                 label=f"hereditary Rb (1 hit, peak ~ {KNUDSON_PEAK_AGE_HEREDITARY_YR:.1f} yr)")
+    ax_knud.plot(age_k, pdf_sp_n, color="tab:blue", linewidth=2.4,
+                 label=f"sporadic Rb (2 hits, peak ~ {KNUDSON_PEAK_AGE_SPORADIC_YR:.0f} yr)")
+    ax_knud.axvline(KNUDSON_PEAK_AGE_HEREDITARY_YR, color="tab:red",
+                     linestyle=":", linewidth=0.9, alpha=0.6)
+    ax_knud.axvline(KNUDSON_PEAK_AGE_SPORADIC_YR, color="tab:blue",
+                     linestyle=":", linewidth=0.9, alpha=0.6)
+    ax_knud.set_xlabel("age at diagnosis [years]", fontsize=10)
+    ax_knud.set_ylabel("retinoblastoma onset PDF (normalised)", fontsize=10)
+    ax_knud.set_xlim(0.0, 60.0)
+    ax_knud.set_ylim(0.0, 1.10)
+    ax_knud.set_title(
+        "Knudson 2-hit hypothesis: hereditary onset is decades earlier\n"
+        "(one Rb allele inherited mutated -> only one somatic hit needed)",
+        fontsize=10,
+    )
+    ax_knud.legend(loc="upper right", fontsize=8, framealpha=0.92)
+    ax_knud.grid(True, alpha=0.3)
+
+    fig.suptitle(
+        "Tumour growth dynamics from substrate: Gompertz + multistage "
+        "incidence + log-kill therapy",
+        fontsize=13,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "110_tumor_growth.png"))
+
+    # ---------------- 111: 8 Hallmarks of cancer schematic ---------------
+    fig = plt.figure(figsize=(14, 10))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.6, 1.0], wspace=0.20)
+
+    # Left: radial 8-hallmark diagram around a central cancer-cell node
+    ax_h = fig.add_subplot(gs[0, 0])
+    ax_h.set_aspect("equal")
+    ax_h.axis("off")
+
+    central = plt.Circle((0.0, 0.0), 0.18, color="#a1003c",
+                          alpha=0.90, ec="black", linewidth=2.0,
+                          zorder=5)
+    ax_h.add_patch(central)
+    ax_h.text(0.0, 0.0, "Cancer\ncell",
+              fontsize=12, fontweight="bold", color="white",
+              ha="center", va="center", zorder=6)
+
+    palette_h = plt.cm.tab10(np.linspace(0.0, 1.0, N_HALLMARKS))
+
+    for i, (label, color) in enumerate(zip(HALLMARKS, palette_h)):
+        theta = _math.pi / 2 - 2 * _math.pi * i / N_HALLMARKS
+        x_node = 0.7 * _math.cos(theta)
+        y_node = 0.7 * _math.sin(theta)
+        ax_h.plot([0.18 * _math.cos(theta), 0.55 * _math.cos(theta)],
+                   [0.18 * _math.sin(theta), 0.55 * _math.sin(theta)],
+                   color="black", linewidth=1.2, alpha=0.6, zorder=2)
+        circ = plt.Circle((x_node, y_node), 0.14, color=color,
+                           alpha=0.85, ec="black", linewidth=1.4,
+                           zorder=4)
+        ax_h.add_patch(circ)
+        ax_h.text(x_node, y_node, str(i + 1),
+                   fontsize=14, fontweight="bold", color="black",
+                   ha="center", va="center", zorder=5)
+        x_lab = 1.05 * _math.cos(theta)
+        y_lab = 1.05 * _math.sin(theta)
+        words = label.split()
+        if len(words) >= 4:
+            mid = len(words) // 2
+            wrapped = " ".join(words[:mid]) + "\n" + " ".join(words[mid:])
+        else:
+            wrapped = label
+        if x_lab > 0.05:
+            ha = "left"
+        elif x_lab < -0.05:
+            ha = "right"
+        else:
+            ha = "center"
+        ax_h.text(x_lab, y_lab, wrapped,
+                   fontsize=10, color="black",
+                   ha=ha, va="center", zorder=6)
+
+    ax_h.set_xlim(-1.55, 1.55)
+    ax_h.set_ylim(-1.30, 1.30)
+    ax_h.set_title(
+        f"The {N_HALLMARKS} Hallmarks of Cancer (Hanahan & Weinberg, 2011)",
+        fontsize=12, pad=18,
+    )
+
+    # Right: 5-stage progression bar of acquired hallmarks
+    ax_p = fig.add_subplot(gs[0, 1])
+    stage_labels = list(STAGES)
+    counts = [sim.n_hallmarks_acquired(s) for s in stage_labels]
+    stage_colors = ["#2ecc71", "#f1c40f", "#e67e22",
+                    "#e74c3c", "#8e44ad"]
+    bars = ax_p.bar(range(len(stage_labels)), counts,
+                     color=stage_colors, edgecolor="black",
+                     linewidth=1.2)
+    ax_p.set_xticks(range(len(stage_labels)))
+    ax_p.set_xticklabels([s.capitalize() for s in stage_labels],
+                          rotation=30, ha="right", fontsize=9)
+    ax_p.set_ylabel("hallmarks acquired", fontsize=10)
+    ax_p.set_ylim(0, N_HALLMARKS + 1.0)
+    ax_p.set_title(
+        "5-stage adenoma-carcinoma sequence\n"
+        "each stage adds 2 hallmarks",
+        fontsize=10,
+    )
+    ax_p.axhline(N_HALLMARKS, color="black", linestyle="--",
+                  linewidth=0.9, alpha=0.6,
+                  label=f"all {N_HALLMARKS} hallmarks")
+    for bar, c in zip(bars, counts):
+        ax_p.text(bar.get_x() + bar.get_width() / 2.0,
+                   bar.get_height() + 0.18, f"{c}",
+                   ha="center", va="bottom", fontsize=10,
+                   fontweight="bold")
+    ax_p.grid(True, alpha=0.3, axis="y")
+    ax_p.legend(loc="upper left", fontsize=8)
+
+    fig.suptitle(
+        "Hanahan-Weinberg hallmarks: 8 acquired capabilities per cancer cell\n"
+        "(B3 ontology: each hallmark releases one substrate-saturation lock)",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    out.append(save(fig, "111_hallmarks_cancer.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Muscle contraction (sarcomere geometry + Hill F-v / length-tension / power)
+# ---------------------------------------------------------------------------
+
+def render_muscle() -> list[str]:
+    """Produce 104_sarcomere.png and 105_force_velocity.png.
+
+    104: Sarcomere schematic with thick + thin filaments, cross-bridges,
+         Z-disks, A-band, I-band, M-line; plus a hexagonal cross-section
+         panel; plus a 5-state Lymn-Taylor 1971 cross-bridge cycle.
+    105: Hill 1938 hyperbolic F-v curve + Gordon-Huxley-Julian 1966
+         length-tension curve + power-velocity P(v) = F(v) * v showing
+         the v* ~ 0.31 v_max maximum.
+    """
+    from src.stiff_medium.muscle_substrate import (
+        CROSS_BRIDGE_AXIAL_PERIOD_NM,
+        DUTY_RATIO_SKELETAL,
+        HILL_A_OVER_FMAX,
+        H_ZONE_LENGTH_UM,
+        INTER_FILAMENT_SPACING_NM,
+        LENGTH_TENSION_L_MAX_UM,
+        LENGTH_TENSION_L_MIN_UM,
+        LENGTH_TENSION_L_PLATEAU_HIGH_UM,
+        LENGTH_TENSION_L_PLATEAU_LOW_UM,
+        POWER_STROKE_NM,
+        SARCOMERE_REST_LENGTH_UM,
+        THICK_FILAMENT_LENGTH_UM,
+        THIN_FILAMENT_LENGTH_UM,
+        MuscleGeometry,
+        MuscleSimulator,
+    )
+    from matplotlib.patches import Circle, FancyArrowPatch, Rectangle
+    import math as _m
+    out: list[str] = []
+
+    geom = MuscleGeometry(sarcomere_length_um=SARCOMERE_REST_LENGTH_UM,
+                           n_thick=3, n_cross_bridges=20)
+    sim = MuscleSimulator(geometry=geom)
+
+    # ------------------------------------------------------------------
+    # 104_sarcomere.png : longitudinal schematic + cross-section + cycle
+    # ------------------------------------------------------------------
+    fig = plt.figure(figsize=(15, 9))
+    gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 0.9],
+                          width_ratios=[1.6, 1.0])
+
+    # -- Top: longitudinal sarcomere schematic --------------------------
+    ax_long = fig.add_subplot(gs[0, :])
+    z_left, z_right = geom.z_disk_positions_um()
+    a_left, a_right = geom.a_band_extent_um()
+    h_left, h_right = geom.h_zone_extent_um()
+    (zl, lt), (zr, rt) = geom.thin_filament_axial_extents_um()
+
+    # Background bands
+    ax_long.add_patch(Rectangle(
+        (a_left, -1.0), a_right - a_left, 2.0,
+        facecolor="#fde9d9", edgecolor="none", alpha=0.7, label="A-band"))
+    iband_label_used = False
+    for (xl, xr) in geom.i_band_extents_um():
+        lbl = None if iband_label_used else "I-band"
+        iband_label_used = True
+        ax_long.add_patch(Rectangle(
+            (xl, -1.0), xr - xl, 2.0,
+            facecolor="#dce6f4", edgecolor="none", alpha=0.7, label=lbl))
+    ax_long.add_patch(Rectangle(
+        (h_left, -0.4), h_right - h_left, 0.8,
+        facecolor="#fff2cc", edgecolor="none", alpha=0.6, label="H-zone"))
+
+    # Z-disks (vertical bars)
+    for z in (z_left, z_right):
+        ax_long.plot([z, z], [-1.0, 1.0], color="#333", linewidth=4)
+    # M-line
+    ax_long.plot([0.0, 0.0], [-0.4, 0.4], color="#666", linewidth=2,
+                 linestyle="--")
+
+    # Thick filaments (3 stacked) at y = +0.35, 0, -0.35
+    cb_pos = geom.cross_bridge_axial_positions_um()
+    for y_off in (0.35, 0.0, -0.35):
+        ax_long.plot([a_left, a_right], [y_off, y_off],
+                     color="#1f4e79", linewidth=8, solid_capstyle="butt")
+        for cbx in cb_pos:
+            ax_long.plot([cbx, cbx], [y_off, y_off + 0.10],
+                         color="#1f4e79", linewidth=1.0)
+            ax_long.plot([cbx, cbx + 0.012], [y_off + 0.10, y_off + 0.18],
+                         color="#1f4e79", linewidth=1.5)
+            ax_long.plot([cbx, cbx], [y_off, y_off - 0.10],
+                         color="#1f4e79", linewidth=1.0)
+            ax_long.plot([cbx, cbx + 0.012], [y_off - 0.10, y_off - 0.18],
+                         color="#1f4e79", linewidth=1.5)
+
+    # Thin filaments (left and right pairs)
+    for y_off in (0.20, -0.20, 0.50, -0.50):
+        ax_long.plot([z_left, lt], [y_off, y_off],
+                     color="#c0504d", linewidth=3, solid_capstyle="butt")
+        ax_long.plot([rt, z_right], [y_off, y_off],
+                     color="#c0504d", linewidth=3, solid_capstyle="butt")
+
+    # Annotations
+    ax_long.annotate("Z-disk", xy=(z_left, 0.95),
+                     xytext=(z_left - 0.18, 1.15), fontsize=10, ha="center")
+    ax_long.annotate("Z-disk", xy=(z_right, 0.95),
+                     xytext=(z_right + 0.18, 1.15), fontsize=10, ha="center")
+    ax_long.annotate("M-line", xy=(0, 0.45), xytext=(0.0, 1.10),
+                     fontsize=10, ha="center")
+    ax_long.annotate("A-band\n(thick filament)", xy=(0, -1.1),
+                     xytext=(0, -1.45), fontsize=9, ha="center")
+    ax_long.annotate("I-band\n(thin only)",
+                     xy=((z_left + a_left) / 2, -1.1),
+                     xytext=((z_left + a_left) / 2, -1.45),
+                     fontsize=9, ha="center")
+    ax_long.annotate("I-band\n(thin only)",
+                     xy=((a_right + z_right) / 2, -1.1),
+                     xytext=((a_right + z_right) / 2, -1.45),
+                     fontsize=9, ha="center")
+    ax_long.annotate("H-zone\n(bare)", xy=(0, 0.45), xytext=(0.55, 0.85),
+                     fontsize=8, ha="center", color="#7f6000")
+
+    # Sarcomere length brace
+    ax_long.annotate("", xy=(z_left, -1.7), xytext=(z_right, -1.7),
+                     arrowprops=dict(arrowstyle="<->", color="black", lw=1.2))
+    ax_long.text(0.0, -1.85,
+                 f"sarcomere length = {SARCOMERE_REST_LENGTH_UM:.2f} um",
+                 ha="center", fontsize=10)
+
+    ax_long.set_xlim(z_left - 0.4, z_right + 0.4)
+    ax_long.set_ylim(-2.1, 1.45)
+    ax_long.set_xlabel("axial position [um]")
+    ax_long.set_yticks([])
+    ax_long.set_title(
+        "Sarcomere schematic (sliding-filament theory: H.E. Huxley & Hanson 1954, "
+        "A.F. Huxley & Niedergerke 1954)\n"
+        f"thick = {THICK_FILAMENT_LENGTH_UM} um (myosin), "
+        f"thin = {THIN_FILAMENT_LENGTH_UM} um (actin), "
+        f"H-zone = {H_ZONE_LENGTH_UM} um (M-line region); "
+        f"cross-bridge axial period = {CROSS_BRIDGE_AXIAL_PERIOD_NM:.1f} nm",
+        fontsize=11)
+    handles, labels = ax_long.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax_long.legend(by_label.values(), by_label.keys(),
+                    loc="upper right", fontsize=8)
+
+    # -- Bottom-left: hexagonal-lattice cross-section -------------------
+    ax_xs = fig.add_subplot(gs[1, 0])
+    thick_xs = geom.thick_filament_cross_section_nm()
+    thin_xs = geom.thin_filament_cross_section_nm()
+    for k, tx in enumerate(thick_xs):
+        ax_xs.add_patch(Circle(
+            tx, radius=15.0 / 2.0, facecolor="#1f4e79",
+            edgecolor="black", linewidth=1.0,
+            label="thick (myosin, ~ 15 nm)" if k == 0 else None))
+    for k, tn in enumerate(thin_xs):
+        ax_xs.add_patch(Circle(
+            tn, radius=8.0 / 2.0, facecolor="#c0504d",
+            edgecolor="black", linewidth=0.8,
+            label="thin (actin, ~ 8 nm)" if k == 0 else None))
+    for i, t1 in enumerate(thick_xs):
+        for t2 in thick_xs[i + 1:]:
+            d = np.linalg.norm(t2 - t1)
+            if _m.isclose(d, INTER_FILAMENT_SPACING_NM, rel_tol=1e-6):
+                ax_xs.plot([t1[0], t2[0]], [t1[1], t2[1]],
+                            color="#bbbbbb", linewidth=0.8, linestyle=":")
+    ax_xs.set_aspect("equal")
+    ax_xs.set_xlim(-INTER_FILAMENT_SPACING_NM * 1.6,
+                    INTER_FILAMENT_SPACING_NM * 1.6)
+    ax_xs.set_ylim(-INTER_FILAMENT_SPACING_NM * 1.6,
+                    INTER_FILAMENT_SPACING_NM * 1.6)
+    ax_xs.set_xlabel("x [nm]")
+    ax_xs.set_ylabel("y [nm]")
+    ax_xs.set_title(
+        f"Hexagonal cross-section\n"
+        f"inter-filament spacing = {INTER_FILAMENT_SPACING_NM:.0f} nm; "
+        f"thin:thick = 2:1",
+        fontsize=10)
+    ax_xs.legend(loc="upper right", fontsize=7)
+
+    # -- Bottom-right: 5-state cross-bridge cycle (Lymn-Taylor 1971) ---
+    ax_cyc = fig.add_subplot(gs[1, 1])
+    states = sim.cross_bridge_states()
+    n = len(states)
+    angles = np.linspace(np.pi / 2, np.pi / 2 - 2 * np.pi, n, endpoint=False)
+    R = 1.0
+    centres = np.array([[R * np.cos(a), R * np.sin(a)] for a in angles])
+    short_label = {
+        "attached_rigor": "1. Rigor\n(A.M)",
+        "power_stroke":   "2. Power stroke\n(A.M.ADP -> A.M)",
+        "detached":       "3. Detached\n(A + M.ATP)",
+        "primed":         "4. Primed\n(M.ADP.Pi)",
+        "attached_again": "5. Re-attach\n(A.M.ADP.Pi)",
+    }
+    colors = ["#4472c4", "#ed7d31", "#a5a5a5", "#70ad47", "#ffc000"]
+    for i, c in enumerate(centres):
+        ax_cyc.add_patch(Circle(
+            c, radius=0.32, facecolor=colors[i],
+            edgecolor="black", linewidth=1.0, alpha=0.85))
+        ax_cyc.text(c[0], c[1], short_label[states[i]],
+                     ha="center", va="center", fontsize=8)
+    for i in range(n):
+        c0 = centres[i]
+        c1 = centres[(i + 1) % n]
+        v_dir = c1 - c0
+        v_norm = v_dir / (np.linalg.norm(v_dir) + 1e-30)
+        start = c0 + 0.32 * v_norm
+        end = c1 - 0.32 * v_norm
+        ax_cyc.add_patch(FancyArrowPatch(
+            start, end, arrowstyle="->", mutation_scale=15,
+            color="black", linewidth=1.4))
+    ax_cyc.text(0.0, -1.8,
+                 f"1 ATP per cycle  (Delta_G ~ {sim.atp_free_energy_pN_nm():.0f} pN.nm)\n"
+                 f"power stroke = {POWER_STROKE_NM:.0f} nm; "
+                 f"duty ratio ~ {DUTY_RATIO_SKELETAL * 100:.0f}%",
+                 ha="center", fontsize=9, color="#444")
+    ax_cyc.set_aspect("equal")
+    ax_cyc.set_xlim(-1.7, 1.7)
+    ax_cyc.set_ylim(-2.2, 1.7)
+    ax_cyc.set_xticks([])
+    ax_cyc.set_yticks([])
+    ax_cyc.set_title("Cross-bridge cycle (Lymn-Taylor 1971)",
+                       fontsize=11)
+
+    fig.suptitle("Sarcomere structure + cross-bridge cycle from substrate "
+                  "(strain-pump array; 1 ATP -> ~ 10 nm slide)",
+                  fontsize=13)
+    fig.tight_layout()
+    out.append(save(fig, "104_sarcomere.png"))
+
+    # ------------------------------------------------------------------
+    # 105_force_velocity.png : Hill F-v + length-tension + power
+    # ------------------------------------------------------------------
+    fig = plt.figure(figsize=(15, 5))
+    ax_fv = fig.add_subplot(1, 3, 1)
+    ax_lt = fig.add_subplot(1, 3, 2)
+    ax_pw = fig.add_subplot(1, 3, 3)
+
+    f_arr_curve, v_arr_curve = sim.hill_force_velocity_curve(n=400)
+    ax_fv.plot(v_arr_curve, f_arr_curve, color="#1f4e79", linewidth=2.4,
+                label=f"Hill 1938 (a/F_max = {HILL_A_OVER_FMAX:.2f})")
+    ax_fv.scatter([0.0], [sim.f_max_normalised], s=70, c="black",
+                   zorder=4, label="F_max @ v=0 (isometric)")
+    ax_fv.scatter([sim.v_max_normalised], [0.0], s=70, c="black",
+                   marker="x", zorder=4, label="v_max @ F=0 (unloaded)")
+    v_star = sim.velocity_at_max_power()
+    f_star = sim.hill_force_from_velocity(v_star)
+    ax_fv.scatter([v_star], [f_star], s=100, c="red", marker="*",
+                   edgecolors="black", linewidths=1.0, zorder=5,
+                   label=f"peak power: v*/v_max = {v_star/sim.v_max_normalised:.2f}")
+    ax_fv.set_xlabel("velocity v / v_max")
+    ax_fv.set_ylabel("force F / F_max")
+    ax_fv.set_title("Hill 1938 force-velocity\n"
+                     "(F + a)(v + b) = (F_max + a) * b")
+    ax_fv.legend(loc="upper right", fontsize=8)
+    ax_fv.grid(True, alpha=0.3)
+    ax_fv.set_xlim(0.0, 1.05)
+    ax_fv.set_ylim(0.0, 1.05)
+
+    L, F_act = sim.length_tension_curve(n=800)
+    ax_lt.plot(L, F_act, color="#c0504d", linewidth=2.4,
+                label="Gordon-Huxley-Julian 1966")
+    ax_lt.axvspan(LENGTH_TENSION_L_PLATEAU_LOW_UM,
+                   LENGTH_TENSION_L_PLATEAU_HIGH_UM,
+                   color="#ffc000", alpha=0.18,
+                   label=f"plateau {LENGTH_TENSION_L_PLATEAU_LOW_UM:.2f}-"
+                          f"{LENGTH_TENSION_L_PLATEAU_HIGH_UM:.2f} um")
+    ax_lt.scatter([LENGTH_TENSION_L_MIN_UM, LENGTH_TENSION_L_MAX_UM],
+                   [0, 0], s=50, c="black", zorder=4)
+    ax_lt.text(LENGTH_TENSION_L_MIN_UM, -0.07,
+                f"clash\n{LENGTH_TENSION_L_MIN_UM:.2f}",
+                ha="center", fontsize=8)
+    ax_lt.text(LENGTH_TENSION_L_MAX_UM, -0.07,
+                f"no overlap\n{LENGTH_TENSION_L_MAX_UM:.2f}",
+                ha="center", fontsize=8)
+    L0 = sim.optimal_length_um()
+    ax_lt.scatter([L0], [1.0], s=110, c="red", marker="*",
+                   edgecolors="black", linewidths=1.0, zorder=5,
+                   label=f"L_0 = {L0:.3f} um")
+    ax_lt.set_xlabel("sarcomere length L [um]")
+    ax_lt.set_ylabel("active force F_active / F_max")
+    ax_lt.set_title("Length-tension curve\n"
+                     "peak active force on optimal-overlap plateau")
+    ax_lt.set_xlim(1.0, 4.0)
+    ax_lt.set_ylim(-0.12, 1.1)
+    ax_lt.grid(True, alpha=0.3)
+    ax_lt.legend(loc="upper right", fontsize=8)
+
+    v_arr, p_arr, f_arr = sim.hill_power_curve(n=800)
+    ax_pw.plot(v_arr, p_arr, color="#70ad47", linewidth=2.4,
+                label="P(v) = F(v) . v")
+    ax_pw.plot(v_arr, f_arr, color="#1f4e79", linewidth=1.4, alpha=0.5,
+                linestyle="--", label="F(v)  (reference)")
+    P_max = sim.max_mechanical_power()
+    ax_pw.scatter([v_star], [P_max], s=110, c="red", marker="*",
+                   edgecolors="black", linewidths=1.0, zorder=5,
+                   label=f"P_max @ v* = {v_star/sim.v_max_normalised:.2f}")
+    ax_pw.axvline(v_star, color="red", linewidth=0.8, linestyle=":")
+    ax_pw.set_xlabel("velocity v / v_max")
+    ax_pw.set_ylabel("normalised P / (F_max v_max)")
+    ax_pw.set_title("Power-velocity\n"
+                     f"P_max = {P_max:.3f} F_max v_max  at v* ~ 0.31 v_max")
+    ax_pw.set_xlim(0.0, 1.05)
+    ax_pw.set_ylim(0.0, max(P_max * 1.4, 1.05))
+    ax_pw.grid(True, alpha=0.3)
+    ax_pw.legend(loc="upper right", fontsize=8)
+
+    fig.suptitle("Muscle force-velocity, length-tension, and power "
+                  "(substrate strain-pump envelope; ~ 50% theoretical efficiency)",
+                  fontsize=13)
+    fig.tight_layout()
+    out.append(save(fig, "105_force_velocity.png"))
+
+    return out
+
+
+def render_morphogenesis() -> list[str]:
+    """Produce 102_turing_patterns.png and 103_morphogen_gradient.png.
+
+    102: 2D Gierer-Meinhardt RD snapshots — stripes, spots, and maze
+         patterns from the three canonical D_v/D_u regimes, plus the
+         radial Fourier-power spectra and a wavelength bar comparing
+         predicted (2pi sqrt(D_v/rho)) to measured.
+    103: 1D Wolpert French-flag morphogen gradient — diffusion + decay
+         steady state with two thresholds (theta_low, theta_high) that
+         partition the tissue into blue / white / red bands of cell
+         fate.  Side panel: substrate-ontology summary linking
+         morphogen = strain pattern, diffusion = wave propagation,
+         reaction = nonlinearity.
+    """
+    from src.stiff_medium.morphogenesis_substrate import (
+        LITERATURE,
+        MorphogenesisGeometry,
+        MorphogenesisSimulator,
+        french_flag_fates,
+        make_morphogenesis,
+        turing_wavelength,
+    )
+    out: list[str] = []
+
+    # 102_turing_patterns.png — three RD snapshots + spectra + wavelength
+    fig = plt.figure(figsize=(18, 11))
+    gs = fig.add_gridspec(
+        3, 4, height_ratios=[1.4, 1.0, 1.0],
+        width_ratios=[1.0, 1.0, 1.0, 1.2],
+        hspace=0.45, wspace=0.32,
+    )
+
+    regimes = ["stripes_zebra", "spots_leopard", "maze_belousov"]
+    titles = [
+        "STRIPES  (D_v/D_u = 40)\nzebra / cuttlefish / fingerprints",
+        "SPOTS  (D_v/D_u = 100)\nleopard / giraffe",
+        "MAZE  (D_v/D_u = 25, high gain)\ncortex folds / BZ chemistry",
+    ]
+    for i, regime in enumerate(regimes):
+        sim = make_morphogenesis(regime, n_x=80, n_y=80,
+                                  n_steps=4500, rng_seed=11 + i)
+        ev = sim.evolve(record_every=1500)
+
+        ax_p = fig.add_subplot(gs[0, i])
+        u_final = ev["u_final"]
+        im = ax_p.imshow(u_final, origin="lower", cmap="viridis",
+                          extent=[0, sim.geometry.Lx, 0, sim.geometry.Ly])
+        ax_p.set_title(titles[i], fontsize=10)
+        ax_p.set_xlabel("x  [tissue length]", fontsize=9)
+        ax_p.set_ylabel("y  [tissue length]", fontsize=9)
+        plt.colorbar(im, ax=ax_p, fraction=0.045, pad=0.03,
+                     label="activator u  (substrate strain)")
+
+        u_centred = u_final - float(np.mean(u_final))
+        spec = np.abs(np.fft.fft2(u_centred)) ** 2
+        n_y, n_x = u_final.shape
+        kx = 2.0 * np.pi * np.fft.fftfreq(n_x, d=sim.geometry.dx())
+        ky = 2.0 * np.pi * np.fft.fftfreq(n_y, d=sim.geometry.dy())
+        KX, KY = np.meshgrid(kx, ky, indexing="xy")
+        K = np.sqrt(KX ** 2 + KY ** 2)
+        k_max = float(np.max(K))
+        n_bins = 32
+        bins = np.linspace(0.0, k_max, n_bins + 1)
+        which = np.digitize(K.ravel(), bins) - 1
+        which = np.clip(which, 0, n_bins - 1)
+        power = np.zeros(n_bins, dtype=np.float64)
+        counts = np.zeros(n_bins, dtype=np.int_)
+        for idx in range(n_bins):
+            mask = (which == idx)
+            power[idx] = float(np.sum(spec.ravel()[mask]))
+            counts[idx] = int(np.sum(mask))
+        bin_centres = 0.5 * (bins[:-1] + bins[1:])
+        valid = (counts > 0) & (np.arange(n_bins) > 0)
+        ax_s = fig.add_subplot(gs[1, i])
+        ax_s.semilogy(bin_centres[valid], np.maximum(power[valid], 1e-20),
+                      "b-", linewidth=1.7)
+        lam_pred = sim.geometry.predicted_wavelength()
+        q_pred = 2.0 * np.pi / lam_pred
+        ax_s.axvline(q_pred, color="red", linestyle="--", linewidth=1.5,
+                     alpha=0.8, label=f"q* = 2pi/lambda_pred = {q_pred:.1f}")
+        idx_star = int(np.argmax(np.where(valid, power, -np.inf)))
+        q_meas = bin_centres[idx_star]
+        ax_s.axvline(q_meas, color="green", linestyle=":", linewidth=1.5,
+                     alpha=0.8, label=f"q_meas = {q_meas:.1f}")
+        ax_s.set_xlabel("|q|  (radial wavenumber)", fontsize=9)
+        ax_s.set_ylabel("|FFT(u)|^2", fontsize=9)
+        ax_s.set_title("radial Fourier spectrum", fontsize=9)
+        ax_s.legend(fontsize=7, loc="upper right")
+        ax_s.grid(True, alpha=0.3, which="both")
+
+        ax_b = fig.add_subplot(gs[2, i])
+        klass = sim.classify_pattern(u_final)
+        lam_meas = sim.measured_wavelength(u_final)
+        bars = ax_b.bar(
+            ["lambda_pred\n2pi sqrt(D_v/rho)", "lambda_meas\nFFT peak"],
+            [lam_pred, lam_meas],
+            color=["lightcoral", "steelblue"],
+            edgecolor="black", linewidth=1.3,
+        )
+        for bar, val in zip(bars, [lam_pred, lam_meas]):
+            ax_b.text(bar.get_x() + bar.get_width() / 2.0, val * 1.02,
+                      f"{val:.3f}", ha="center", fontsize=9, fontweight="bold")
+        ax_b.set_ylabel("wavelength  lambda  [tissue units]", fontsize=9)
+        ax_b.set_title(f"classifier: {klass.upper()}", fontsize=9)
+        ax_b.grid(True, alpha=0.3, axis="y")
+
+    ax_txt = fig.add_subplot(gs[:, 3])
+    ax_txt.axis("off")
+    txt = (
+        "TURING PATTERN FORMATION\n"
+        "========================\n\n"
+        "RD equations (Gierer-Meinhardt):\n"
+        "  du/dt = D_u nabla^2 u\n"
+        "        + rho(u^2/v - mu u)\n"
+        "  dv/dt = D_v nabla^2 v\n"
+        "        + rho u^2 - nu v\n\n"
+        "Substrate ontology:\n"
+        "  morphogen u, v = strain\n"
+        "    pattern in stiff medium\n"
+        "  diffusion D nabla^2  =\n"
+        "    substrate wave propagation\n"
+        "  reaction f, g  =\n"
+        "    substrate nonlinearity\n"
+        "    (autocatalysis +\n"
+        "     cross-inhibition)\n\n"
+        "Turing instability:\n"
+        "  D_v / D_u  > critical (~10)\n"
+        "  => homogeneous SS unstable\n"
+        "  => pattern with wavelength\n"
+        "      lambda ~ 2 pi sqrt(D_v/rho)\n\n"
+        "Classifier rules (FFT):\n"
+        "  STRIPES : axial anisotropy\n"
+        "  SPOTS   : isotropic + high\n"
+        "            excess kurtosis\n"
+        "  MAZE    : isotropic + low\n"
+        "            excess kurtosis\n\n"
+        "Canonical regimes:\n"
+    )
+    for name, spec in LITERATURE.items():
+        ratio = spec["D_v"] / spec["D_u"]
+        lam = turing_wavelength(spec["D_v"], spec["rho"])
+        txt += (f"  {name}:\n"
+                f"    D_v/D_u = {ratio:.0f},  lambda = {lam:.3f}\n")
+    txt += (
+        "\nReferences:\n"
+        "  Turing 1952 PTRSB 237\n"
+        "  Gierer&Meinhardt 1972 Kyb 12\n"
+        "  Murray 2003 Math Bio II 2-3\n"
+    )
+    ax_txt.text(0.0, 1.0, txt, fontsize=8, family="monospace",
+                va="top", ha="left", transform=ax_txt.transAxes)
+
+    fig.suptitle(
+        "TURING PATTERNS from substrate reaction-diffusion: "
+        "stripes / spots / maze\n"
+        "Activator-inhibitor (Gierer-Meinhardt) on a 2D stiff-medium tissue, "
+        "lambda ~ 2 pi sqrt(D_v / rho)",
+        fontsize=13,
+    )
+    out.append(save(fig, "102_turing_patterns.png"))
+
+    # 103_morphogen_gradient.png — Wolpert French flag readout
+    fig = plt.figure(figsize=(16, 8))
+    gs = fig.add_gridspec(2, 3, width_ratios=[1.4, 1.4, 1.0],
+                          height_ratios=[1.0, 1.0],
+                          hspace=0.42, wspace=0.30)
+
+    sim = MorphogenesisSimulator(
+        geometry=MorphogenesisGeometry(Lx=1.0, n_x=200, n_y=24)
+    )
+    # Pick D and decay so alpha = sqrt(k/D) ~ 3: the 1/alpha morphogen
+    # length scale is ~ 0.33 of the tissue length, giving the three
+    # bands more balanced fractions for the (0.33, 0.66) thresholds.
+    grad = sim.french_flag_gradient(
+        c_source=1.0, c_sink=0.0, D=1.0e-2, decay=0.09, n_x=200,
+    )
+    x = grad["x"]
+    c = grad["c"]
+    alpha = float(grad["alpha"][0])
+    theta_low, theta_high = 0.33, 0.66
+    fates = sim.cell_fates(c, theta_low=theta_low, theta_high=theta_high)
+    band_colors = {0: "#3b6ac1", 1: "#f0f0f0", 2: "#c0392b"}
+
+    ax_g = fig.add_subplot(gs[0, 0])
+    ax_g.plot(x, c, "b-", linewidth=2.4,
+              label=f"c(x) = sinh(a(L-x))/sinh(aL),  a = {alpha:.2f}")
+    ax_g.axhline(theta_high, color="red", linestyle="--", linewidth=1.4,
+                 alpha=0.85, label=f"theta_high = {theta_high}")
+    ax_g.axhline(theta_low, color="orange", linestyle="--", linewidth=1.4,
+                 alpha=0.85, label=f"theta_low  = {theta_low}")
+    in_band = int(fates[0])
+    x_start = float(x[0])
+    for j in range(1, len(fates)):
+        if int(fates[j]) != in_band:
+            ax_g.axvspan(x_start, float(x[j]), alpha=0.20,
+                         color=band_colors[in_band])
+            in_band = int(fates[j])
+            x_start = float(x[j])
+    ax_g.axvspan(x_start, float(x[-1]), alpha=0.20,
+                 color=band_colors[in_band])
+    ax_g.set_xlabel("position  x  along tissue", fontsize=10)
+    ax_g.set_ylabel("morphogen concentration  c(x)", fontsize=10)
+    ax_g.set_title(
+        "Wolpert French flag - diffusion+decay gradient with two thresholds",
+        fontsize=11,
+    )
+    ax_g.legend(fontsize=8, loc="upper right")
+    ax_g.grid(True, alpha=0.3)
+    ax_g.set_ylim(-0.05, 1.10)
+    ax_g.set_xlim(0.0, 1.0)
+
+    ax_f = fig.add_subplot(gs[0, 1])
+    flag_image = np.tile(fates, (24, 1)).astype(np.float64)
+    cmap_flag = plt.matplotlib.colors.ListedColormap(
+        [band_colors[0], band_colors[1], band_colors[2]]
+    )
+    ax_f.imshow(flag_image, origin="lower", cmap=cmap_flag,
+                extent=[0, 1, 0, 0.25], aspect="auto", vmin=0, vmax=2)
+    ax_f.set_xlabel("position  x  along tissue", fontsize=10)
+    ax_f.set_ylabel("y", fontsize=10)
+    ax_f.set_title("cell fate determination -> French flag tissue",
+                   fontsize=11)
+    n_blue = int(np.sum(fates == 0))
+    n_white = int(np.sum(fates == 1))
+    n_red = int(np.sum(fates == 2))
+    f_blue = n_blue / len(fates)
+    f_white = n_white / len(fates)
+    f_red = n_red / len(fates)
+    if n_blue > 0:
+        x_blue = float(np.mean(np.where(fates == 0)[0])) / len(fates)
+        ax_f.text(x_blue, 0.13, f"BLUE\n{f_blue * 100:.0f}%",
+                  ha="center", color="white", fontsize=10, fontweight="bold")
+    if n_white > 0:
+        x_white = float(np.mean(np.where(fates == 1)[0])) / len(fates)
+        ax_f.text(x_white, 0.13, f"WHITE\n{f_white * 100:.0f}%",
+                  ha="center", color="black", fontsize=10, fontweight="bold")
+    if n_red > 0:
+        x_red = float(np.mean(np.where(fates == 2)[0])) / len(fates)
+        ax_f.text(x_red, 0.13, f"RED\n{f_red * 100:.0f}%",
+                  ha="center", color="white", fontsize=10, fontweight="bold")
+
+    ax_t = fig.add_subplot(gs[0, 2])
+    ax_t.axis("off")
+    summary_txt = (
+        "WOLPERT FRENCH FLAG\n"
+        "===================\n\n"
+        "Source  c(0) = 1.0\n"
+        "Sink    c(L) = 0.0\n"
+        f"Decay   k    = 0.09\n"
+        f"Diff    D    = 1.0e-2\n"
+        f"  => alpha = sqrt(k/D)\n"
+        f"          = {alpha:.2f}\n"
+        f"     1/alpha = {1.0 / alpha:.3f}\n\n"
+        f"Thresholds:\n"
+        f"  theta_low  = {theta_low}\n"
+        f"  theta_high = {theta_high}\n\n"
+        f"Band fractions:\n"
+        f"  RED   (high c):  {f_red:.2f}\n"
+        f"  WHITE (mid c):   {f_white:.2f}\n"
+        f"  BLUE  (low c):   {f_blue:.2f}\n\n"
+        "Substrate ontology:\n"
+        "  morphogen = strain\n"
+        "    amplitude in stiff\n"
+        "    medium\n"
+        "  decay = drag gamma on\n"
+        "    the strain wave\n"
+        "  cell fate = locked-in\n"
+        "    response of the\n"
+        "    substrate strain\n"
+        "    pocket to local\n"
+        "    morphogen amplitude\n"
+    )
+    ax_t.text(0.0, 1.0, summary_txt, fontsize=8.5, family="monospace",
+              va="top", ha="left", transform=ax_t.transAxes)
+
+    ax_d = fig.add_subplot(gs[1, 0])
+    decays = [0.05, 0.25, 2.5]
+    palette = plt.cm.plasma(np.linspace(0.1, 0.85, len(decays)))
+    for k, color in zip(decays, palette):
+        g = sim.french_flag_gradient(c_source=1.0, c_sink=0.0, D=1.0e-2,
+                                      decay=k, n_x=200)
+        a = float(g["alpha"][0])
+        ax_d.plot(g["x"], g["c"], color=color, linewidth=2.0,
+                  label=f"k={k:>5g},  a={a:.2f},  1/a={1.0/a:.2f}")
+    ax_d.axhline(theta_high, color="red", linestyle=":", linewidth=1.0,
+                 alpha=0.6)
+    ax_d.axhline(theta_low, color="orange", linestyle=":", linewidth=1.0,
+                 alpha=0.6)
+    ax_d.set_xlabel("position  x", fontsize=10)
+    ax_d.set_ylabel("c(x)", fontsize=10)
+    ax_d.set_title("steepness of gradient vs decay rate", fontsize=11)
+    ax_d.legend(fontsize=8, loc="upper right")
+    ax_d.grid(True, alpha=0.3)
+    ax_d.set_ylim(-0.05, 1.10)
+
+    ax_e = fig.add_subplot(gs[1, 1])
+    threshold_pairs = [(0.20, 0.50), (0.33, 0.66), (0.50, 0.80)]
+    for idx, (tl, th) in enumerate(threshold_pairs):
+        f_arr = french_flag_fates(c, theta_low=tl, theta_high=th)
+        n0 = int(np.sum(f_arr == 0))
+        n1 = int(np.sum(f_arr == 1))
+        n2 = int(np.sum(f_arr == 2))
+        ax_e.barh(idx, n0, color=band_colors[0], edgecolor="black",
+                  height=0.7, label="blue" if idx == 0 else None)
+        ax_e.barh(idx, n1, left=n0, color=band_colors[1], edgecolor="black",
+                  height=0.7, label="white" if idx == 0 else None)
+        ax_e.barh(idx, n2, left=n0 + n1, color=band_colors[2],
+                  edgecolor="black", height=0.7,
+                  label="red" if idx == 0 else None)
+        ax_e.text(len(c) * 1.02, idx,
+                  f"  theta=({tl}, {th})", fontsize=9, va="center")
+    ax_e.set_yticks(range(len(threshold_pairs)))
+    ax_e.set_yticklabels([f"{i+1}" for i in range(len(threshold_pairs))])
+    ax_e.set_xlabel("cell count along tissue", fontsize=10)
+    ax_e.set_ylabel("threshold pair", fontsize=10)
+    ax_e.set_title("band fractions vs threshold choice", fontsize=11)
+    ax_e.legend(fontsize=9, loc="lower right")
+    ax_e.set_xlim(0, len(c) * 1.45)
+
+    ax_a = fig.add_subplot(gs[1, 2])
+    alphas = np.linspace(0.5, 20.0, 80)
+    half_lengths = 1.0 / alphas
+    ax_a.plot(alphas, half_lengths, "b-", linewidth=2.0)
+    ax_a.set_xlabel("alpha = sqrt(k/D)  [1/length]", fontsize=10)
+    ax_a.set_ylabel("morphogen length scale  1/alpha", fontsize=10)
+    ax_a.set_title("steepness control knob", fontsize=11)
+    ax_a.grid(True, alpha=0.3)
+    ax_a.axvline(alpha, color="red", linestyle="--", linewidth=1.2,
+                 alpha=0.7, label=f"current a = {alpha:.2f}")
+    ax_a.legend(fontsize=9)
+
+    fig.suptitle(
+        "MORPHOGEN GRADIENT (Wolpert 1969) - French flag from substrate "
+        "diffusion + decay\n"
+        "two thresholds (theta_low, theta_high) partition tissue into "
+        "three cell-fate bands",
+        fontsize=13,
+    )
+    out.append(save(fig, "103_morphogen_gradient.png"))
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Sensory transduction (vision + hearing + smell) - 108 / 109
+# ---------------------------------------------------------------------------
+
+def render_sensory() -> list[str]:
+    """Render 108_phototransduction.png and 109_hearing_cochlea.png.
+
+    Implementation lives in scripts/_render_sensory.py to keep the patch
+    focused and avoid bloating this file with another long renderer.
+    """
+    from scripts._render_sensory import render_sensory as _render
+    return _render()
+
+
 def main() -> None:
     print(f"Rendering all visualizations to {VISUALS_DIR}/")
     print("=" * 70)
@@ -7572,6 +9774,8 @@ def main() -> None:
          render_cmb),
         ("Quantum measurement & decoherence (double-slit + density matrix + CHSH)",
          render_quantum_measurement),
+        ("Mitochondrial bioenergetics (ETC complexes I-IV + F0F1 ATP synthase + chemiosmosis)",
+         render_mito),
         ("Atoms as substrate strain patterns (orbitals + IEs for H..Ne)",
          render_atoms),
         ("Molecular bonds as substrate strain bridges (5 molecules + 20 bonds)",
@@ -7608,6 +9812,8 @@ def main() -> None:
          render_ecosystem),
         ("Evolutionary dynamics (HW + Wright-Fisher + Kimura/Haldane + speciation)",
          render_evolution),
+        ("Cell differentiation (Waddington landscape + lineage tree + Yamanaka)",
+         render_differentiation),
         ("Epidemiology (SIR + SEIR + R_0 phase diagram + vaccination)",
          render_epidemiology),
         ("Climate (radiative forcing + ECS + IPCC AR6 sensitivity bands)",
@@ -7626,6 +9832,18 @@ def main() -> None:
          render_semi),
         ("Measurement / observer (substrate decoherence, NOT consciousness; Bell + Born + Wigner)",
          render_measurement_observer),
+        ("Allometric scaling laws (Kleiber 3/4 across 30 mammals + WBE vascular fractal)",
+         render_allometric),
+        ("Brain network dynamics (Kuramoto sync + 5 EEG bands + DMN + -3/2 avalanches)",
+         render_brain),
+        ("Cancer / tumor growth (Gompertz + Armitage-Doll + Knudson + log-kill + 8 hallmarks)",
+         render_cancer),
+        ("Muscle contraction (sarcomere + sliding filament + Hill 1938 F-v + cross-bridge cycle)",
+         render_muscle),
+        ("Sensory transduction (rhodopsin photo-cascade + cochlea Bekesy + MET + Weber-Fechner)",
+         render_sensory),
+        ("Morphogenesis / Turing patterns (stripes/spots/maze + Wolpert French flag gradient)",
+         render_morphogenesis),
         ("Substrate visualizer", render_substrate_visualizer),
     ]
     all_paths = []
