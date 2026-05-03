@@ -199,26 +199,37 @@ def render_saturation_simulator() -> list[str]:
     for name, fn, ax in scenarios:
         try:
             res = fn()
-            x = res.get("x")
-            u = res.get("u")
-            sigma = res.get("sigma")
-            if x is not None and u is not None:
-                ax.plot(x, u, "b-", label="u(x)", linewidth=1.5)
-            if x is not None and sigma is not None:
+            # SimResult dataclass: .x, .u_history (n_t, n_x), .sigma_history, .times
+            x = getattr(res, "x", None)
+            u_hist = getattr(res, "u_history", None)
+            sig_hist = getattr(res, "sigma_history", None)
+            times = getattr(res, "times", None)
+            if x is not None and u_hist is not None and len(u_hist) > 0:
+                # Show initial + middle + final snapshots
+                n_t = len(u_hist)
+                snap_idxs = [0, n_t // 2, n_t - 1]
+                colors = ["lightblue", "royalblue", "navy"]
+                for i, c in zip(snap_idxs, colors):
+                    label = f"t={times[i]:.2f}" if times is not None else f"step {i}"
+                    ax.plot(x, u_hist[i], color=c, linewidth=1.4, label=label)
+            if x is not None and sig_hist is not None and len(sig_hist) > 0:
                 ax2 = ax.twinx()
-                ax2.plot(x, sigma, "r--", label="σ(x)", alpha=0.7)
+                ax2.plot(x, sig_hist[-1], "r--", linewidth=1.5,
+                         label="σ final", alpha=0.7)
                 ax2.axhline(0.5, color="orange", linestyle=":",
                             linewidth=2, label="σ_max=½")
                 ax2.set_ylabel("σ", color="r")
                 ax2.legend(loc="upper right", fontsize=8)
+                ax2.set_ylim(-0.05, 0.6)
             ax.set_title(name)
             ax.set_xlabel("x")
-            ax.set_ylabel("u", color="b")
+            ax.set_ylabel("u(x,t)", color="b")
             ax.legend(loc="upper left", fontsize=8)
             ax.grid(True, alpha=0.3)
         except Exception as e:
-            ax.text(0.5, 0.5, f"{name}\n(error: {e})",
-                    ha="center", transform=ax.transAxes, fontsize=8)
+            ax.text(0.5, 0.5, f"{name}\n(error: {type(e).__name__}: {e})",
+                    ha="center", transform=ax.transAxes, fontsize=8,
+                    wrap=True)
     fig.suptitle("Substrate saturation cap σ ≤ 1/2 — 4 dynamic scenarios")
     fig.tight_layout()
     out.append(save(fig, "11_saturation_scenarios.png"))
