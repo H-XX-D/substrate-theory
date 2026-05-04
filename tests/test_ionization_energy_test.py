@@ -1,24 +1,42 @@
-"""Tests for ionization_energy_test -- substrate Schroedinger first IE H..Ar."""
+"""Tests for ionization_energy_test -- substrate Schroedinger first IE H..Ar.
+
+The Category-A substrate prediction is the K_rank=5 substrate-derived
+screening (predict_substrate_K_rank), which gives a mean error of ~21%
+across H..Ar with NO per-element knobs.  The other methods are tagged:
+  Slater       — zero-knob baseline, NOT substrate-specific
+  Substrate-HF — Category B research target (uses standard QC kernel)
+  Calibrated   — Category C per-element empirical anchor
+"""
 
 from __future__ import annotations
 
 import pytest
 
-from src.stiff_medium.atom_substrate import RYDBERG_EV
+from src.stiff_medium.atom_substrate import (
+    RYDBERG_EV,
+    SIGMA_PP_KRANK,
+    SIGMA_SP_KRANK,
+    AtomSimulator,
+)
 from src.stiff_medium.b3_constants import K_rank
 from src.stiff_medium.ionization_energy_test import (
     ELEMENT_SYMBOLS,
     GROUP_LABEL,
     HF_ORBITAL_HARTREE,
     MEASURED_IE_EV,
+    METHOD_CATEGORY,
+    METHOD_CATEGORY_LABEL,
     SIGMA_PP,
     SIGMA_SP,
     Z_EFF_CALIBRATED_EXTENDED,
     build_rows,
     group_breakdown,
     k_rank_zeff_for_least_bound,
+    predict_calibrated,
     predict_ionization_energy,
+    predict_slater,
     predict_substrate_HF,
+    predict_substrate_K_rank,
     run_test,
     slater_zeff_for_least_bound,
 )
@@ -202,24 +220,53 @@ def test_predict_unknown_mode_raises():
 
 
 # --------------------------------------------------------------------------- #
-# K_rank substrate refinement: substrate-derived intra-shell screening        #
+# K_rank substrate refinement -- CATEGORY A PRIMARY substrate prediction      #
 # --------------------------------------------------------------------------- #
 
-def test_sigma_constants_derived_from_K_rank():
-    """sigma_pp and sigma_sp are forced by canonical K_rank=5 4-simplex."""
-    assert SIGMA_PP == pytest.approx(1.0 - 1.0 / K_rank)
-    assert SIGMA_PP == pytest.approx(4.0 / 5.0)
-    assert SIGMA_SP == pytest.approx(1.0 - 1.0 / (K_rank * K_rank))
-    assert SIGMA_SP == pytest.approx(24.0 / 25.0)
-    # K_rank=5 confirmed by canonical b3_constants
+def test_sigma_constants_exact_4_5_and_24_25():
+    """sigma_pp = EXACTLY 4/5 and sigma_sp = EXACTLY 24/25, forced by K_rank=5.
+
+    Canonical anchor: K_rank=5 is the 4-simplex (K_5) closure of the Mobius
+    bundle on K_4 (the substrate primitive that builds nuclei).  Both
+    coefficients are pure-integer ratios with NO per-element fit.
+    """
+    # K_rank=5 canonical
     assert K_rank == 5
 
+    # Exact integer ratios
+    assert SIGMA_PP == 4.0 / 5.0
+    assert SIGMA_SP == 24.0 / 25.0
 
-def test_krank_hydrogen_exact():
-    """H still has Z_eff = 1, so K_rank refinement is trivially exact."""
-    z, ie = predict_ionization_energy(1, "krank")
+    # Also derivable from K_rank algebraic form
+    assert SIGMA_PP == pytest.approx(1.0 - 1.0 / K_rank)
+    assert SIGMA_SP == pytest.approx(1.0 - 1.0 / (K_rank * K_rank))
+
+    # ionization_energy_test SIGMA_* re-export the atom_substrate values
+    assert SIGMA_PP == SIGMA_PP_KRANK
+    assert SIGMA_SP == SIGMA_SP_KRANK
+
+
+def test_krank_hydrogen_exact_minus_13p6():
+    """[Category A zero-knob] H: K_rank predicts exactly -13.6 eV.
+
+    H has no other electrons -> Z_eff = 1, so the K_rank screening rule is
+    trivially Z_eff = Z = 1, IE = Rydberg = 13.605693 eV exactly.
+    """
+    # Via the canonical primary entry-point
+    z, ie = predict_substrate_K_rank(1)
     assert z == pytest.approx(1.0)
+    assert ie == pytest.approx(13.605693, abs=1e-5)
     assert ie == pytest.approx(RYDBERG_EV, rel=1e-12)
+
+    # Same result via the legacy predict_ionization_energy switch
+    z2, ie2 = predict_ionization_energy(1, "krank")
+    assert z2 == z
+    assert ie2 == ie
+
+    # Same result via AtomSimulator.solve_with_krank_screening
+    z3, ie3 = AtomSimulator.solve_with_krank_screening(1)
+    assert z3 == z
+    assert ie3 == ie
 
 
 def test_krank_p_shell_outperforms_slater():
@@ -249,12 +296,90 @@ def test_krank_s_shell_unchanged():
         )
 
 
-def test_krank_mean_error_below_25_pct():
-    """K_rank substrate model: mean abs error < 25% across H..Ar."""
+def test_krank_mean_error_about_21_pct():
+    """[Category A primary] K_rank substrate: mean abs error ~21% across H..Ar.
+
+    Sentinel that the headline B3 atomic-IE result (21% mean, 12x better than
+    Slater) does not regress.
+    """
     rows = build_rows(18)
     errs = [r.err_krank_pct for r in rows]
     mean_err = sum(errs) / len(errs)
-    assert mean_err < 25.0, f"K_rank mean = {mean_err:.2f}%"
+    # Headline value: 21.4% (verified empirically with K_rank=5 substrate
+    # screening on NIST H..Ar)
+    assert mean_err == pytest.approx(21.35, abs=0.5), (
+        f"K_rank headline mean changed: {mean_err:.2f}% (was 21.35%)"
+    )
+    # Independent backstop: must stay under 25%
+    assert mean_err < 25.0
+
+
+def test_krank_is_about_12x_better_than_slater():
+    """[Category A vs baseline] K_rank substrate beats zero-knob Slater by ~12x
+    on mean H..Ar absolute error.
+
+    Empirically the ratio is 11.9x (Slater 254% / K_rank 21.4%).  We assert
+    >= 11x as a regression backstop with some headroom; the headline
+    descriptive claim in docs is "~12x better".
+    """
+    rows = build_rows(18)
+    err_sl = sum(r.err_slater_pct for r in rows) / len(rows)
+    err_kr = sum(r.err_krank_pct  for r in rows) / len(rows)
+    ratio = err_sl / err_kr
+    assert ratio > 11.0, (
+        f"K_rank only beats Slater by {ratio:.1f}x (should be >=11x; "
+        f"headline descriptive value is ~12x)"
+    )
+    # Also assert the ratio rounds to "12" when described
+    assert round(ratio) == 12
+
+
+def test_predict_substrate_K_rank_matches_solve_with_krank():
+    """Canonical primary entry-point delegates to AtomSimulator method."""
+    for Z in range(1, 19):
+        z_p, ie_p = predict_substrate_K_rank(Z)
+        z_a, ie_a = AtomSimulator.solve_with_krank_screening(Z)
+        assert z_p == z_a
+        assert ie_p == ie_a
+        # Also matches the legacy switch
+        z_l, ie_l = predict_ionization_energy(Z, "krank")
+        assert z_l == z_p
+        assert ie_l == ie_p
+
+
+# --------------------------------------------------------------------------- #
+# Category map + named entry-points                                           #
+# --------------------------------------------------------------------------- #
+
+def test_method_category_map_correct():
+    """K_rank is Category A; HF Koopmans is B; Calibrated is C; Slater baseline."""
+    assert METHOD_CATEGORY["krank"]        == "A"
+    assert METHOD_CATEGORY["substrate_HF"] == "B"
+    assert METHOD_CATEGORY["calibrated"]   == "C"
+    assert METHOD_CATEGORY["slater"]       == "baseline"
+    # Labels are present and informative
+    for k in METHOD_CATEGORY:
+        assert k in METHOD_CATEGORY_LABEL
+        assert len(METHOD_CATEGORY_LABEL[k]) > 10
+
+
+def test_named_entry_points_match_legacy_switch():
+    """predict_substrate_K_rank / predict_slater / predict_substrate_HF /
+    predict_calibrated all match the legacy mode-switch wrapper."""
+    for Z in (1, 2, 5, 10, 14, 18):
+        assert predict_substrate_K_rank(Z) == predict_ionization_energy(Z, "krank")
+        assert predict_slater(Z)            == predict_ionization_energy(Z, "slater")
+        assert predict_substrate_HF(Z)      == predict_ionization_energy(Z, "substrate_HF")
+        assert predict_calibrated(Z)        == predict_ionization_energy(Z, "calibrated")
+
+
+def test_default_predict_mode_is_krank():
+    """Default mode of predict_ionization_energy is now the Category-A K_rank
+    substrate prediction (was formerly slater)."""
+    for Z in (1, 6, 18):
+        default = predict_ionization_energy(Z)
+        krank   = predict_ionization_energy(Z, "krank")
+        assert default == krank
 
 
 # --------------------------------------------------------------------------- #

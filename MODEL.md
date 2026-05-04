@@ -12,6 +12,34 @@ nuclear binding all derive at <2% from B3 inventory integers. See §5.1.
 
 ---
 
+## 0.5 Derivability Classification
+
+A 32-phenomenon completion audit (see `analysis/substrate_completion_roadmap.md`,
+2026-05-01) classifies every benchmark prediction into one of three honest
+categories. Each entry in §5.1, §5.1b, and §5.1c below is tagged with the
+corresponding letter so the ledger reflects what the substrate actually
+derives versus what it inherits.
+
+| Tag | Meaning | Cost to close |
+|---|---|---|
+| **[A]** | **Substrate-derivable today.** Result follows from the 4 continuous primitives (K, ρ, ξ, γ) + Möbius half-flux + B3 inventory integers, with zero per-observable tuning. Either already wired in code, or a 1-day refactor away. | Zero (live) or <1 day (refactor) |
+| **[B]** | **Derivable in principle.** Substrate has the ingredients and the derivation chain is identifiable, but the explicit calculation has not been completed. Estimated 1–4 weeks per item. | 1–4 weeks each |
+| **[C]** | **Honest empirical input.** External anchor: G_F, atomic numbers, per-material electronic band structure, ChPT low-energy constants, defect microstructure, specific crystal-structure choice. Substrate-blind by design — same status as the SM's ~25 free parameters. | Irreducible at the substrate scope |
+
+**Bottom-line distribution (32-phenomenon catalog):**
+
+- **13/32 Category A (~40.6%)** — already substrate-derivable
+- **10/32 Category B (~31.3%)** — derivable in principle, research needed
+- **9/32 Category C (~28.1%)** — accepted as empirical anchors
+
+> **Substrate derives ~40% directly, ~30% in principle, ~28% accepted as empirical — this is a 2-3× compression vs SM's ~25 free parameters.**
+
+The C-class residue is the irreducible interface where substrate hands off to
+boundary conditions of standard physics. The A+B coverage (~72%) is what
+the substrate ontology actively claims.
+
+---
+
 ## 1. Foundation
 
 ### 1.1 The single eternal entity
@@ -337,73 +365,185 @@ primitives + α (which itself derives from K_4 + Möbius + drag).
 tuning. Each comes from substrate cell + Möbius half-flux + drag γ + B3
 inventory integers (no SM-style separate Yukawas/mixing matrices).
 
-| sector | observable | substrate result | match |
-|---|---|---|---|
-| **EM coupling** | α(0) | 11/(48π³) × exp(-3π/737) | **0.004%** |
-| Atomic | He+ ionization | 4·R∞(α) | 0.001% |
-| Atomic | H 2p fine structure | α⁴m_e c²/32 | 0.017% |
-| Atomic | H ionization, Lyα, Lyβ, Hα | from R∞(α) | 0.018-0.045% |
-| Atomic | 21cm line | (8/3)g_p(m_e/m_p)α²R∞ | 0.037% |
-| Lepton | m_μ/m_e | n_G(k_r²-k_p) = 207 | 0.11% |
-| Lepton | m_τ/m_μ | n_A·n_G/(k_e-k_p) | 0.35% |
-| Lepton | Koide ratio | 3/2 | 0.001% |
-| Nuclear | magic numbers | HO + spin-orbit shells | exact set |
-| Nuclear | deuteron binding | ε_face = Λ_QCD/90 | 0.11% |
-| Nuclear | α-particle BE/A | (32/225)Λ_QCD/4 | 0.54% |
-| Nuclear | ⁴⁰Ca excitation | ε_pair-related | 0.89% |
-| Nuclear | ⁵⁷Fe Mössbauer | ε_face/154 | 0.14% |
-| Nuclear | m_n - m_p | m_p/720 | 0.76% |
-| Hadronic | m_π | (k_e-Strand)·ε_edge | 0.31% |
-| Hadronic | Δ-N split | 3·ε_pair | 2.39% |
-| **PMNS** | sin²θ_12 | 42α | **0.17%** |
-| **PMNS** | sin²θ_13 | 3α | **0.49%** |
-| **PMNS** | sin²θ_23 | ½ + 2πα | **0.027%** |
-| PMNS | δ_CP | -π/2 | 1.83% |
-| PMNS | atmospheric ν_μ→ν_τ P | from PMNS angles | **0.2%** |
-| **CKM** | sin θ_C (Cabibbo) | 1/(π√2) | **0.035%** |
-| EW | sin²θ_W | n_G/(n_F+n_R+n_G) | 0.20% |
-| EW | m_W | 80.31 GeV | 0.07% |
-| EW | Higgs m_H | √(4/15)·v_EW | 1.51% |
-| Cosmology | Ω_DM/Ω_b | (2π-1)(1+1/(8π²)) | **0.18%** |
-| Cosmology | H_0 | Σm_ν chain | 2.45% |
-| Cosmology | σ_8 | Hubble chain | 1.26% |
-| Cosmology | Σm_ν | from cell-inventory | <DESI bound |
-| Cosmology | nuclear saturation density | 1/Q^(1/3) | 3.3% |
+| sector | observable | substrate result | match | tag |
+|---|---|---|---|---|
+| **EM coupling** | α(0) | 11/(48π³) × exp(-3π/737) | **0.004%** | [A] |
+| Atomic | He+ ionization | 4·R∞(α) | 0.001% | [A] |
+| Atomic | H 2p fine structure | α⁴m_e c²/32 | 0.017% | [A] |
+| Atomic | H ionization, Lyα, Lyβ, Hα | from R∞(α) | 0.018-0.045% | [A] |
+| Atomic | 21cm line | (8/3)g_p(m_e/m_p)α²R∞ | 0.037% | [A] |
+| Lepton | m_μ/m_e | n_G(k_r²-k_p) = 207 | 0.11% | [A] |
+| Lepton | m_τ/m_μ | n_A·n_G/(k_e-k_p) | 0.35% | [A] |
+| Lepton | Koide ratio | 3/2 | 0.001% | [A] |
+| Nuclear | magic numbers | HO + spin-orbit shells | exact set | [A] |
+| Nuclear | deuteron binding | ε_face = Λ_QCD/90 | 0.11% | [A] |
+| Nuclear | α-particle BE/A | (32/225)Λ_QCD/4 | 0.54% | [A] |
+| Nuclear | ⁴⁰Ca excitation | ε_pair-related | 0.89% | [A] |
+| Nuclear | ⁵⁷Fe Mössbauer | ε_face/154 | 0.14% | [A] |
+| Nuclear | m_n - m_p | m_p/720 | 0.76% | [A] |
+| Hadronic | m_π | (k_e-Strand)·ε_edge | 0.31% | [A] |
+| Hadronic | Δ-N split | 3·ε_pair | 2.39% | [A] |
+| **PMNS** | sin²θ_12 | 42α | **0.17%** | [A] |
+| **PMNS** | sin²θ_13 | 3α | **0.49%** | [A] |
+| **PMNS** | sin²θ_23 | ½ + 2πα | **0.027%** | [A] |
+| PMNS | δ_CP | -π/2 | 1.83% | [A] |
+| PMNS | atmospheric ν_μ→ν_τ P | from PMNS angles | **0.2%** | [A] |
+| **CKM** | sin θ_C (Cabibbo) | 1/(π√2) | **0.035%** | [A] |
+| EW | sin²θ_W | n_G/(n_F+n_R+n_G) | 0.20% | [A] |
+| EW | m_W | 80.31 GeV | 0.07% | [A] |
+| EW | Higgs m_H | √(4/15)·v_EW | 1.51% | [A] |
+| Cosmology | Ω_DM/Ω_b | (2π-1)(1+1/(8π²)) | **0.18%** | [A] |
+| Cosmology | H_0 | Σm_ν chain | 2.45% | [B] |
+| Cosmology | σ_8 | Hubble chain | 1.26% | [B] |
+| Cosmology | Σm_ν | from cell-inventory | <DESI bound | [A] |
+| Cosmology | nuclear saturation density | 1/Q^(1/3) | 3.3% | [A] |
 
 **26 observables, average residual < 0.5%, 8 of them at <0.1%.**
 
 ### 5.1c Cosmology / fundamental physics additions (2026-05-01 closure pass)
 
-| sector | observable | substrate result | match |
-|---|---|---|---|
-| Hierarchy | M_Pl/v_EW | exp(4π² − 1) | **0.093% in exponent** |
-| Cosmology | Ω_b (baryon fraction) | 1/(1 + 5.35 + 14) | **0.27%** |
-| Cosmology | Ω_Λ/Ω_b | n_F + 2 = 14 | 0.43% |
-| CMB | n_s (scalar tilt) | 1 − 1/(8π²) | **0.6%** |
-| CMB | Λ vacuum energy | (2.41 meV)⁴ from m_1 | structural |
-| BBN | Y_p (⁴He fraction) | from ε_face | EXACT |
-| BBN | D/H ratio | inherits ε_face | 0.12% |
-| Cosmology | η (baryon asymmetry) | exp(−21) = 7.6×10⁻¹⁰ | 24% |
-| Strong | α_s(M_Z) | 16α = π/n_N | 0.97% |
-| Quark | m_u, m_d, m_s, m_c, m_b, m_t | substrate units | 0.48–7.5% |
-| Higgs | λ_H | K_pair/n_A = 2/15 | 3.0% |
+| sector | observable | substrate result | match | tag |
+|---|---|---|---|---|
+| Hierarchy | M_Pl/v_EW | exp(4π² − 1) | **0.093% in exponent** | [A] |
+| Cosmology | Ω_b (baryon fraction) | 1/(1 + 5.35 + 14) | **0.27%** | [A] |
+| Cosmology | Ω_Λ/Ω_b | n_F + 2 = 14 | 0.43% | [A] |
+| CMB | n_s (scalar tilt) | 1 − 1/(8π²) | **0.6%** | [A] |
+| CMB | Λ vacuum energy | (2.41 meV)⁴ from m_1 | structural | [A] |
+| BBN | Y_p (⁴He fraction) | from ε_face | EXACT | [A] |
+| BBN | D/H ratio | inherits ε_face | 0.12% | [A] |
+| Cosmology | η (baryon asymmetry) | exp(−21) = 7.6×10⁻¹⁰ | 24% | [B] |
+| Strong | α_s(M_Z) | 16α = π/n_N | 0.97% | [A] (one-anchor); [B] running |
+| Quark | m_u, m_d, m_s, m_c, m_b, m_t | substrate units | 0.48–7.5% | [A] light; [B] m_c, m_b matching |
+| Higgs | λ_H | K_pair/n_A = 2/15 | 3.0% | [A] |
 
 ### 5.1b QCD sector additions (2026-05-01 follow-up)
 
-| sector | observable | substrate result | match |
-|---|---|---|---|
-| Strong | **α_s(M_Z)** | **16α = π/n_N** | **0.97%** |
-| Quark | m_u | ε_face | 2.9% |
-| Quark | m_d | 2·ε_face | 4.8% |
-| Quark | m_s | ε_pair | 7.5% |
-| Quark | m_c | (n_F+1)·ε_pair | 2.4% |
-| Quark | m_b | 21·Λ_QCD | 0.48% |
-| Quark | m_t | v_EW/√2 | 0.63% |
-| Higgs | λ_H | K_pair/n_A = 2/15 | 3.0% |
+| sector | observable | substrate result | match | tag |
+|---|---|---|---|---|
+| Strong | **α_s(M_Z)** | **16α = π/n_N** | **0.97%** | [A] one-anchor; [B] running |
+| Quark | m_u | ε_face | 2.9% | [A] |
+| Quark | m_d | 2·ε_face | 4.8% | [A] |
+| Quark | m_s | ε_pair | 7.5% | [A] |
+| Quark | m_c | (n_F+1)·ε_pair | 2.4% | [B] (constituent → pole matching) |
+| Quark | m_b | 21·Λ_QCD | 0.48% | [B] (constituent → pole matching) |
+| Quark | m_t | v_EW/√2 | 0.63% | [A] |
+| Higgs | λ_H | K_pair/n_A = 2/15 | 3.0% | [A] |
 
 **Total: 34 observables, all from one substrate ontology + B3 inventory.**
 
-### 5.2 Substrate-distinctive predictions
+### 5.2 Substrate Completion Status (2026-05-03)
+
+The 32-phenomenon completion audit (`analysis/substrate_completion_roadmap.md`,
+expanded to 9 missing-phenomenon test sectors: nuclear binding, BCS gap ratio,
+particle lifetimes, BBN, Madelung, fracture, hadron mass, Debye, ionization
+energy) classifies the substrate's coverage as follows:
+
+| Category | Count | Fraction | Description |
+|---|---:|---:|---|
+| **A — Substrate-derivable** | 13/32 | **40.6%** | 11 already firing in code + 2 immediate refactors |
+| **B — Derivable in principle** | 10/32 | **31.3%** | Identified extension chains, 1–4 weeks each |
+| **C — Honest empirical inputs** | 9/32 | **28.1%** | External anchors at the substrate scope boundary |
+| **A + B coverage** | 23/32 | **71.9%** | What the substrate ontology actively claims |
+
+**Per-sector breakdown:**
+
+| Sector       | n | A | B | C |
+|--------------|--:|--:|--:|--:|
+| Nuclear      | 4 | 2 | 2 | 0 |
+| Hadrons      | 6 | 2 | 4 | 0 |
+| BCS          | 4 | 1 | 1 | 2 |
+| Atomic       | 3 | 1 | 1 | 1 |
+| Debye        | 4 | 2 | 0 | 2 |
+| Lifetimes    | 5 | 2 | 1 | 2 |
+| BBN          | 2 | 1 | 1 | 0 |
+| Madelung     | 2 | 1 | 0 | 1 |
+| Fracture     | 2 | 1 | 0 | 1 |
+| **Totals**   |**32**|**13**|**10**|**9**|
+
+**Comparison to Standard Model:**
+
+| Theory | Free parameters / empirical inputs | Substrate equivalent |
+|---|---:|---|
+| Standard Model | ~25 (Yukawas, gauge couplings, mixing matrices, Higgs vev, θ_QCD) | — |
+| ΛCDM cosmology | ~6 (Λ, H₀, Ω_m, Ω_b, n_s, σ₈) | — |
+| GR | 1 (G) | — |
+| **SM + ΛCDM + GR total** | **~32** | — |
+| **Substrate framework** | **9 Category C inputs** + 4 continuous primitives + 1 binary topology | — |
+
+**Net compression: ~32 SM-style external inputs → 9 substrate-class
+empirical anchors. That's a 2–3× compression at honest accounting,
+with an additional ~10 phenomena (~31%) inside the in-principle
+derivable boundary.**
+
+The Category C residue (G_F, atomic numbers, per-material elastic moduli,
+electron-phonon coupling strengths, multiband structure, ChPT couplings,
+crystal-structure choice, defect microstructure, HF exchange) is the
+irreducible interface where substrate hands off to standard-physics
+boundary conditions. It is structurally smaller than the SM's parameter
+count and qualitatively different: substrate-C inputs are macroscopic
+material/condensed-matter anchors, not free fundamental couplings.
+
+### 5.3 Open Research Items (Category B)
+
+The 10 phenomena that are derivable in principle but not yet wired,
+ordered by sector (full chains in `analysis/substrate_completion_roadmap.md`):
+
+| # | Item | Sector | Substrate chain | Effort |
+|---|---|---|---|---|
+| 1 | **Asymmetry coefficient `a_sym ≈ 23 MeV`** | Nuclear (SEMF) | K_4 face-pair torque imbalance × n_A/N_BAM combinatorial | 1–2 wk |
+| 2 | **Pairing coefficient `a_p ≈ 11 MeV`** | Nuclear (SEMF) | Apply substrate-paired-bridge (BCS ontology) to nucleon Cooper pairs at Λ_QCD scale | 1 wk |
+| 3 | **`α_s(μ)` substrate running** | Hadrons (Cornell) | K(ξ) power-law → log running via 1-loop substrate effective action | 2–4 wk |
+| 4 | **Heavy-quark `m_c, m_b` constituent → pole matching** | Hadrons | Chiral-dressing form factor `f(x) = 1/(1 + x²)` interpolating constituent (light) ↔ pole (heavy) | 2 wk |
+| 5 | **Pseudoscalar mixing angle `θ_P ≈ -11°`** | Hadrons | K_4 cell SU(3)_F singlet/octet decomposition + Möbius bundle U(1)_A anomaly | 2 wk |
+| 6 | **η₁ U(1)_A anomaly mass ~947 MeV** | Hadrons | Topological winding of K_pair=2 Möbius bundle × √N_f | 2 wk |
+| 7 | **Baryon spectrum (Σ, Ξ, Ω) drift to 6–14%** | Hadrons | Already done in `b3_baryon_face_spin_v4` (0.36% mean) — wire into `hadron_mass_test` | 1 day (immediate win) |
+| 8 | **`ω_log/ω_D` per lattice type** | BCS | Substrate Debye averaging on FCC/BCC/HCP geometry | 1 wk |
+| 9 | **Möbius-bundle exchange enhancement (half-filled p-shells)** | Atomic | K_pair × Rydberg topological winding for parallel-spin Hund stabilisation | 1–2 wk |
+| 10 | **⁷Li suppression-factor integral** | BBN | Evaluate proto-matter / observer-horizon re-thermalisation rate vs ⁷Be 53-day capture | 1–2 wk |
+
+Closing item #3 (`α_s(μ)` running) auto-promotes radiative-correction items
+in lifetimes (`α_s/π` enhancement, Sirlin Δ_R^V) from C to A as well — the
+single highest-fanout open derivation.
+
+### 5.4 Honest Empirical Inputs (Category C)
+
+The 9 phenomena that the substrate accepts as external anchors. Each is the
+analogue of one of the SM's ~25 free parameters, but at a different scope
+(condensed-matter / boundary conditions, not fundamental couplings):
+
+| # | Input | Sector | Why C not B |
+|---|---|---|---|
+| 1 | **Allen-Dynes electron-phonon coupling `λ_ep`** | BCS strong-coupling | Eliashberg integral over material-specific Fermi-surface band structure; substrate has phonon dispersion but not band structure from primitives |
+| 2 | **Multiband (σ + π) gap structure (e.g. MgB₂)** | BCS | Requires distinct Fermi surfaces per orbital band; substrate K_4 cell is single-bridge per pair |
+| 3 | **Hartree-Fock exchange (Roothaan kernel)** | Atomic IE | Numerical procedure on the substrate-derived Hamiltonian; nothing substrate-specific to add |
+| 4 | **Kohn anomaly (Pb electron-phonon stiffening)** | Debye | Many-body resonance at Fermi surface; same family as `λ_ep` |
+| 5 | **Per-material elastic moduli (B, G)** | Debye / fracture | Predicting (B, G) from atomic Z requires DFT-level electronic structure |
+| 6 | **Fermi constant `G_F`** | Lifetimes | Boundary condition between substrate and EW symmetry-breaking sector; could promote to B if EW boundary closes |
+| 7 | **ChPT low-energy constants (`g_8`, `f_+(0)`)** | Lifetimes (kaon decays) | Multi-mode K-decay fits requiring lattice-QCD chiral-condensate calculation |
+| 8 | **Crystal-structure choice (NaCl vs CsCl vs hexagonal)** | Madelung | Thermodynamic minimisation over many lattice candidates per `(Z⁺, Z⁻, r⁺/r⁻)` |
+| 9 | **Per-material yield stress `σ_y`** | Fracture | Many-defect microstructural property (dislocation density, grain size, alloying) well below the universal substrate cap |
+
+These inputs are qualitatively **macroscopic** (band structure, lattice
+choice, defect structure, ChPT fits) rather than fundamental free parameters.
+The substrate is "blind" to them in the same way that GR is blind to which
+star-formation history a galaxy underwent.
+
+### 5.5 Immediate Wins
+
+Two Category-A refactors that close on a <1-day effort each, listed
+explicitly because the substrate already has every ingredient — only the
+wiring is missing:
+
+| # | Refactor | Closes | Effort |
+|---|---|---|---|
+| 1 | **Wire `b3_baryon_face_spin_v4` into `hadron_mass_test`** | Drops octet/decuplet residuals from 6–14% to <1% (matches the existing 19-baryon spectrum at 0.36% mean already documented in `b3_baryon_face_spin_v4.md`) | <1 day |
+| 2 | **Add explicit topologies for 7Li, 9Be, 10B, 14N in `nucleon_stacking_geometry`** | Drops cluster-nucleus binding residuals from 17–56% to <5%; completes the close-packed nuclear chart already done for A ∈ {2, 3, 4, 6, 8, 12, 16} | <1 day |
+
+Together these two refactors push Category A from 11/32 to 13/32 (from 34.4%
+to 40.6%) at zero new physics. Both are listed first in the immediate-win
+shortlist of `analysis/substrate_completion_roadmap.md` §"Final Summary".
+
+### 5.6 Substrate-distinctive predictions
 
 These are predictions where the substrate ontology forces an outcome that no parameter-tuned SM/ΛCDM analog naturally produces. They are the model's exposed surface — if any of these falsifies, the framework is in trouble.
 
@@ -418,7 +558,7 @@ These are predictions where the substrate ontology forces an outcome that no par
 
 These are the model's "stick-out-the-neck" claims — included not because they are wins but because they sharply distinguish the substrate ontology from the SM/ΛCDM picture.
 
-### 5.3 Recently closed results (2026-04 / 2026-05)
+### 5.7 Recently closed results (2026-04 / 2026-05)
 
 | Result | Substrate derivation | Match | Module |
 |---|---|---|---|
@@ -427,16 +567,16 @@ These are the model's "stick-out-the-neck" claims — included not because they 
 | **3 generations from D = 3** | Vertex-closure caps stress quanta at D; in 3D substrate this gives exactly 3 | FORCED | `primitive_anchoring` |
 | Equivalent compact form: m_μ/m_e = n_G(k_rank² − k_pair) = 207 | Same B3-integer mechanism, different presentation | 0.11% | `b3_constants` |
 
-### 5.4 Honest retractions
+### 5.8 Honest retractions
 
 Two earlier "wins" have been retracted on closer audit. Recording them here so the ledger stays clean.
 
 | Retracted claim | Why retracted | Replacement |
 |---|---|---|
 | Lieb-Oxford bound matched at 4% | The LO closure double-counted the same substrate constant on both sides of the comparison — it was a self-check, not an independent prediction. | None — claim withdrawn entirely. See `lieb_oxford_closure.py` for the audit trail. |
-| T_c,max ≈ 333 K (early ambient-SC speculation) | Used an unconstrained scale; not derivable from substrate primitives. | Replaced with B3-disciplined T_c,max = Λ_QCD / R = **128.9 K** (§5.2), which matches the actual ambient-pressure record at 4%. |
+| T_c,max ≈ 333 K (early ambient-SC speculation) | Used an unconstrained scale; not derivable from substrate primitives. | Replaced with B3-disciplined T_c,max = Λ_QCD / R = **128.9 K** (§5.6), which matches the actual ambient-pressure record at 4%. |
 
-### 5.5 Older core benchmark suite (pre-session)
+### 5.9 Older core benchmark suite (pre-session)
 
 | Domain | # | Best agreement |
 |---|---|---|
