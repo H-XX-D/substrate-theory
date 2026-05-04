@@ -13,12 +13,20 @@ from src.stiff_medium.hadron_mass_test import (
     FAMILY_LIGHT_PS,
     FAMILY_LIGHT_V,
     FAMILY_HEAVY,
+    SIGMA_GEV2,
+    ALPHA_S_C,
+    ALPHA_S_B,
+    M_C_POLE_GEV,
+    M_B_POLE_GEV,
+    CHI_CHIRAL_K,
     HadronReport,
     HadronResidual,
     predict_substrate,
+    predict_substrate_with_cornell,
     run_hadron_mass_test,
 )
 from src.stiff_medium.hadron_spectrum import HadronSpectrum
+from src.stiff_medium import b3_constants as bc
 
 
 # ---------------------------------------------------------------------------
@@ -200,3 +208,124 @@ def test_heavy_quarkonia_break_as_expected() -> None:
     # Both should be NEGATIVE (underprediction) and large.
     assert jpsi.rel_err < -0.20
     assert upsilon.rel_err < -0.50
+
+
+# ---------------------------------------------------------------------------
+# Cornell + chiral corrected predictions
+# ---------------------------------------------------------------------------
+
+
+def test_sigma_gev2_is_substrate_derived() -> None:
+    """σ = (K_pair·K_rank − 1)/K_pair · Λ_QCD² = 9/2 · 0.04 = 0.18 GeV²."""
+    expected = (bc.K_pair * bc.K_rank - 1) / bc.K_pair * (bc.LAMBDA_QCD_MEV / 1000.0) ** 2
+    assert SIGMA_GEV2 == pytest.approx(expected, rel=1e-12)
+    # Numerical value matches lattice-QCD string tension to 3 sig figs.
+    assert SIGMA_GEV2 == pytest.approx(0.18, abs=1e-10)
+
+
+def test_predict_with_cornell_returns_finite_for_all() -> None:
+    hs = HadronSpectrum()
+    for name in PDG_2024:
+        pred = predict_substrate_with_cornell(name, hs)
+        assert math.isfinite(pred)
+        assert pred > 0.0
+
+
+def test_predict_with_cornell_unknown_raises() -> None:
+    with pytest.raises(KeyError):
+        predict_substrate_with_cornell("not_a_hadron")
+
+
+def test_predict_with_cornell_falls_back_for_baryons() -> None:
+    """For nucleons, the corrected predictor falls back to the bare formula."""
+    hs = HadronSpectrum()
+    for name in ("p", "n", "Lambda", "Sigma+", "Delta", "Omega-"):
+        bare = predict_substrate(name, hs)
+        corrected = predict_substrate_with_cornell(name, hs)
+        assert corrected == pytest.approx(bare, rel=1e-12)
+
+
+def test_jpsi_corrected_within_5pct() -> None:
+    """J/ψ Cornell prediction within 5% of PDG 3097 MeV."""
+    pred = predict_substrate_with_cornell("J/psi")
+    pdg = PDG_2024["J/psi"]
+    rel = abs(pred - pdg) / pdg
+    assert rel < 0.05, f"J/psi Cornell pred = {pred:.1f} MeV, PDG = {pdg:.1f}, rel = {rel:.3%}"
+
+
+def test_upsilon_corrected_within_5pct() -> None:
+    """Υ Cornell prediction within 5% of PDG 9460 MeV."""
+    pred = predict_substrate_with_cornell("Upsilon")
+    pdg = PDG_2024["Upsilon"]
+    rel = abs(pred - pdg) / pdg
+    assert rel < 0.05, f"Upsilon Cornell pred = {pred:.1f} MeV, PDG = {pdg:.1f}, rel = {rel:.3%}"
+
+
+def test_kaon_corrected_within_5pct() -> None:
+    """K (and K⁰) chiral m² prediction within 5% of PDG."""
+    for name in ("K", "K0"):
+        pred = predict_substrate_with_cornell(name)
+        pdg = PDG_2024[name]
+        rel = abs(pred - pdg) / pdg
+        assert rel < 0.05, f"{name} chiral pred = {pred:.1f} MeV, PDG = {pdg:.1f}, rel = {rel:.3%}"
+
+
+def test_eta_corrected_within_5pct() -> None:
+    """η GMO + 2x2 anomaly mixing prediction within 5% of PDG."""
+    pred = predict_substrate_with_cornell("eta")
+    pdg = PDG_2024["eta"]
+    rel = abs(pred - pdg) / pdg
+    assert rel < 0.05, f"eta GMO+mixing pred = {pred:.1f} MeV, PDG = {pdg:.1f}, rel = {rel:.3%}"
+
+
+def test_heavy_family_corrected_mean_under_5pct() -> None:
+    """Heavy quarkonium family (J/ψ, Υ) mean error drops from 51% to <5%."""
+    rpt = run_hadron_mass_test()
+    fs_corr = next(f for f in rpt.family_stats(corrected=True) if f.family == "heavy")
+    assert fs_corr.mean_abs_rel < 0.05, (
+        f"heavy mean|Δ| (corrected) = {fs_corr.mean_abs_rel:.3%}"
+    )
+    fs_bare = next(f for f in rpt.family_stats(corrected=False) if f.family == "heavy")
+    assert fs_bare.mean_abs_rel > 0.30, "bare regression sanity"
+
+
+def test_light_ps_family_corrected_mean_under_5pct() -> None:
+    """Light pseudoscalar family mean error drops below 5% with chiral correction."""
+    rpt = run_hadron_mass_test()
+    fs_corr = next(f for f in rpt.family_stats(corrected=True) if f.family == "light_ps")
+    assert fs_corr.mean_abs_rel < 0.05, (
+        f"light_ps mean|Δ| (corrected) = {fs_corr.mean_abs_rel:.3%}"
+    )
+
+
+def test_overall_corrected_mean_substantially_lower() -> None:
+    """Overall mean error drops by at least a factor of 2 with corrections."""
+    rpt = run_hadron_mass_test()
+    assert rpt.mean_abs_rel_corrected < rpt.mean_abs_rel / 2.0
+
+
+def test_report_text_contains_corrected_section() -> None:
+    """The report's text rendering surfaces the corrected per-family stats."""
+    text = run_hadron_mass_test().to_text()
+    assert "Cornell + chiral corrected" in text
+    assert "B3+Cornell" in text
+    assert "OVERALL corrected" in text
+
+
+def test_run_can_disable_corrected() -> None:
+    """include_corrected=False yields a bare-only report (legacy)."""
+    rpt = run_hadron_mass_test(include_corrected=False)
+    assert rpt.n_total == len(PDG_2024)
+    for r in rpt.residuals:
+        assert r.pred_corrected_mev is None
+        assert r.rel_err_corrected is None
+
+
+def test_residual_corrected_attributes_populated() -> None:
+    rpt = run_hadron_mass_test()
+    jpsi = next(r for r in rpt.residuals if r.name == "J/psi")
+    assert jpsi.pred_corrected_mev is not None
+    assert jpsi.abs_err_corrected_mev is not None
+    assert jpsi.rel_err_corrected is not None
+    # Corrected J/ψ should beat the bare prediction by at least 10x in error.
+    assert abs(jpsi.rel_err_corrected) < abs(jpsi.rel_err) / 10.0

@@ -201,17 +201,161 @@ def predicted_BE_per_A(A: int) -> float:
 
 
 # ---------------------------------------------------------------------------
+# SEMF-style corrections on top of the bare substrate prediction
+# ---------------------------------------------------------------------------
+#
+# The bare substrate prediction reproduces the volume + (close-packed) surface
+# pieces but is silent about (i) electrostatic Coulomb repulsion of the
+# protons, (ii) isospin asymmetry penalty for N != Z, (iii) pairing energy
+# from like-nucleon pair correlations.  This section adds these three SEMF
+# terms with substrate-derivable coefficients where possible.
+#
+# COULOMB
+# -------
+# Substrate-style derivation:
+#
+#     a_C  =  (3/5) * alpha_em * hbar*c / R_0   with   R_0 = 1.20 fm
+#          =  (3/5) * (1/137.036) * (197.3269 MeV*fm) / (1.20 fm)
+#          =  0.7200 MeV
+#
+# This is the standard semi-empirical mass formula coefficient and is
+# *also* the substrate-derived value (since R_0 = K_4 nucleon-radius
+# anchor used throughout the deuteron / alpha derivations).  No new free
+# parameter.
+#
+# ASYMMETRY
+# ---------
+# Empirical SEMF value: a_sym = 23 MeV.  This is NOT presently substrate-
+# derivable from primitives -- in standard nuclear physics it emerges from
+# the Fermi-gas kinetic-asymmetry energy plus the isovector NN potential
+# average.  The substrate's bare ``eta_coop * P * eps_face`` does not
+# distinguish isobars and so already implicitly absorbs ~half of the
+# asymmetry penalty into the cooperative factor.  Honest report: the
+# textbook a_sym = 23 MeV is *not* substrate-primitive and acts as one
+# additional fitted parameter for now (see ``nuclear_binding.py`` for a
+# substrate-flavoured Fermi-gas estimate that lands in the 18-25 MeV band).
+#
+# PAIRING
+# -------
+# Empirical SEMF value: a_p ~ 11 MeV.  Sign convention: +a_p / sqrt(A)
+# for even-even, 0 for odd-A, -a_p / sqrt(A) for odd-odd.  Like a_sym
+# this is currently empirical -- the substrate has no microscopic
+# pairing model implemented.
+
+# Constants used by the SEMF corrections
+HBARC_MEV_FM: float = 197.3269804           # MeV * fm
+ALPHA_EM: float = 1.0 / 137.035999084       # fine-structure constant
+R_0_FM: float = 1.20                        # K_4 nucleon-radius anchor
+
+# Substrate-derived Coulomb coefficient: a_C = (3/5) * alpha * hbar*c / R_0
+A_COULOMB_MEV: float = (3.0 / 5.0) * ALPHA_EM * HBARC_MEV_FM / R_0_FM
+# = 0.72004... MeV (matches textbook 0.72 MeV at 0.005%).
+
+# Empirical (NOT presently substrate-primitive) -- see module docstring.
+A_SYMMETRY_MEV: float = 23.0
+A_PAIRING_MEV: float = 11.0
+
+
+def coulomb_correction_MeV(Z: int, A: int, a_C: float = A_COULOMB_MEV
+                            ) -> float:
+    """Substrate Coulomb deficit:  -a_C * Z(Z-1) / A^{1/3}   [MeV].
+
+    Parameters
+    ----------
+    Z, A : int
+        Atomic and mass numbers.
+    a_C : float
+        Coulomb coefficient (default: substrate-derived 0.7200 MeV).
+
+    Returns
+    -------
+    float
+        Negative MeV (reduces binding).
+    """
+    if A <= 0 or Z < 2:
+        return 0.0
+    return -a_C * Z * (Z - 1) / (A ** (1.0 / 3.0))
+
+
+def asymmetry_correction_MeV(Z: int, A: int,
+                              a_sym: float = A_SYMMETRY_MEV) -> float:
+    """SEMF asymmetry penalty:  -a_sym * (N-Z)^2 / A   [MeV].
+
+    Currently empirical: the textbook a_sym = 23 MeV is NOT presently
+    substrate-derivable from primitives (substrate's bare
+    eta_coop * P * eps_face already implicitly absorbs about half of
+    the asymmetry penalty into the cooperative factor).
+    """
+    if A <= 0:
+        return 0.0
+    N = A - Z
+    return -a_sym * (N - Z) ** 2 / A
+
+
+def pairing_correction_MeV(Z: int, A: int,
+                            a_p: float = A_PAIRING_MEV) -> float:
+    """SEMF pairing term:  +-a_p / sqrt(A)   [MeV].
+
+    Sign convention:
+        +a_p / sqrt(A)  for even-Z, even-N
+         0              for odd A
+        -a_p / sqrt(A)  for odd-Z, odd-N
+
+    Currently empirical -- the substrate has no microscopic pairing
+    model implemented.
+    """
+    if A <= 0:
+        return 0.0
+    N = A - Z
+    if A % 2 == 1:        # odd-A
+        return 0.0
+    if Z % 2 == 0 and N % 2 == 0:
+        return +a_p / np.sqrt(A)
+    return -a_p / np.sqrt(A)
+
+
+def predicted_BE_with_corrections(Z: int, A: int,
+                                   a_C: float = A_COULOMB_MEV,
+                                   a_sym: float = A_SYMMETRY_MEV,
+                                   a_p: float = A_PAIRING_MEV) -> float:
+    """BE_pred = bare-substrate + Coulomb + asymmetry + pairing.
+
+    Parameters
+    ----------
+    Z, A : int
+        Atomic and mass numbers.
+    a_C, a_sym, a_p : float
+        SEMF coefficients.  Defaults are substrate-derived (a_C = 0.72)
+        or canonical SEMF values (a_sym = 23, a_p = 11).
+    """
+    return (predicted_BE(A)
+            + coulomb_correction_MeV(Z, A, a_C)
+            + asymmetry_correction_MeV(Z, A, a_sym)
+            + pairing_correction_MeV(Z, A, a_p))
+
+
+# ---------------------------------------------------------------------------
 # Comparison table
 # ---------------------------------------------------------------------------
 
 @dataclass
 class IsotopeResult:
-    """Single-isotope comparison record."""
+    """Single-isotope comparison record.
+
+    ``BE_pred_MeV`` is the bare substrate prediction.  Optional fields
+    ``BE_coul_MeV``, ``BE_asym_MeV``, ``BE_pair_MeV`` and
+    ``BE_pred_corr_MeV`` carry the SEMF-corrected prediction when
+    populated by ``compute_results_with_corrections``.
+    """
     isotope: IsotopeRef
     P: int
     eta_coop: float
     BE_pred_MeV: float
     BE_obs_MeV: float
+    BE_coul_MeV: Optional[float] = None
+    BE_asym_MeV: Optional[float] = None
+    BE_pair_MeV: Optional[float] = None
+    BE_pred_corr_MeV: Optional[float] = None
 
     @property
     def BE_pred_per_A(self) -> float:
@@ -233,10 +377,28 @@ class IsotopeResult:
     def err_per_A(self) -> float:
         return self.BE_pred_per_A - self.BE_obs_per_A
 
+    @property
+    def BE_pred_corr_per_A(self) -> float:
+        if self.BE_pred_corr_MeV is None:
+            return float('nan')
+        return self.BE_pred_corr_MeV / self.isotope.A
+
+    @property
+    def err_abs_corr_MeV(self) -> float:
+        if self.BE_pred_corr_MeV is None:
+            return float('nan')
+        return self.BE_pred_corr_MeV - self.BE_obs_MeV
+
+    @property
+    def err_pct_corr(self) -> float:
+        if self.BE_pred_corr_MeV is None:
+            return float('nan')
+        return 100.0 * self.err_abs_corr_MeV / self.BE_obs_MeV
+
 
 def compute_results(refs: Tuple[IsotopeRef, ...] = AME2020
                     ) -> List[IsotopeResult]:
-    """Compute the 25-isotope comparison table."""
+    """Compute the 25-isotope comparison table (bare substrate only)."""
     out: List[IsotopeResult] = []
     for ref in refs:
         P = predicted_face_pairs(ref.A)
@@ -247,11 +409,60 @@ def compute_results(refs: Tuple[IsotopeRef, ...] = AME2020
     return out
 
 
-def summary_statistics(results: List[IsotopeResult]) -> Dict[str, float]:
-    """Aggregate error statistics across the 25-isotope set."""
-    errs_pct = np.array([r.err_pct for r in results])
-    errs_abs = np.array([abs(r.err_abs_MeV) for r in results])
-    errs_perA = np.array([r.err_per_A for r in results])
+def compute_results_with_corrections(
+    refs: Tuple[IsotopeRef, ...] = AME2020,
+    a_C: float = A_COULOMB_MEV,
+    a_sym: float = A_SYMMETRY_MEV,
+    a_p: float = A_PAIRING_MEV,
+) -> List[IsotopeResult]:
+    """Compute the 25-isotope comparison with Coulomb + asymmetry + pairing.
+
+    Each :class:`IsotopeResult` is fully populated including the three
+    SEMF correction terms and the corrected-prediction error.
+    """
+    out: List[IsotopeResult] = []
+    for ref in refs:
+        P = predicted_face_pairs(ref.A)
+        eta = cooperative_factor(ref.A)
+        be = eta * P * EPS_FACE_MEV
+        be_coul = coulomb_correction_MeV(ref.Z, ref.A, a_C)
+        be_asym = asymmetry_correction_MeV(ref.Z, ref.A, a_sym)
+        be_pair = pairing_correction_MeV(ref.Z, ref.A, a_p)
+        be_corr = be + be_coul + be_asym + be_pair
+        out.append(IsotopeResult(
+            isotope=ref, P=P, eta_coop=eta,
+            BE_pred_MeV=be, BE_obs_MeV=ref.BE_MeV,
+            BE_coul_MeV=be_coul,
+            BE_asym_MeV=be_asym,
+            BE_pair_MeV=be_pair,
+            BE_pred_corr_MeV=be_corr,
+        ))
+    return out
+
+
+def summary_statistics(results: List[IsotopeResult],
+                        use_corrected: bool = False) -> Dict[str, float]:
+    """Aggregate error statistics across the 25-isotope set.
+
+    Parameters
+    ----------
+    results : list[IsotopeResult]
+        Per-isotope results.
+    use_corrected : bool
+        If True (and ``BE_pred_corr_MeV`` is populated) report the
+        corrected-prediction errors.  Default False = bare substrate.
+    """
+    if use_corrected:
+        errs_pct = np.array([r.err_pct_corr for r in results])
+        errs_abs = np.array([abs(r.err_abs_corr_MeV) for r in results])
+        errs_perA = np.array([
+            (r.BE_pred_corr_MeV - r.BE_obs_MeV) / r.isotope.A
+            for r in results
+        ])
+    else:
+        errs_pct = np.array([r.err_pct for r in results])
+        errs_abs = np.array([abs(r.err_abs_MeV) for r in results])
+        errs_perA = np.array([r.err_per_A for r in results])
     return {
         'n_isotopes': len(results),
         'mean_err_pct': float(np.mean(errs_pct)),
@@ -281,12 +492,39 @@ def print_table(results: List[IsotopeResult]) -> None:
 
 
 def classify_results(results: List[IsotopeResult],
-                     tol_pct: float = 5.0
+                     tol_pct: float = 5.0,
+                     use_corrected: bool = False
                      ) -> Tuple[List[IsotopeResult], List[IsotopeResult]]:
     """Split into (passing, failing) at the given tolerance percent."""
-    passing = [r for r in results if abs(r.err_pct) <= tol_pct]
-    failing = [r for r in results if abs(r.err_pct) > tol_pct]
+    if use_corrected:
+        passing = [r for r in results if abs(r.err_pct_corr) <= tol_pct]
+        failing = [r for r in results if abs(r.err_pct_corr) > tol_pct]
+    else:
+        passing = [r for r in results if abs(r.err_pct) <= tol_pct]
+        failing = [r for r in results if abs(r.err_pct) > tol_pct]
     return passing, failing
+
+
+def print_table_with_corrections(results: List[IsotopeResult]) -> None:
+    """Pretty-print the bare + corrected comparison side-by-side."""
+    print(f"{'iso':>6} {'Z':>3} {'A':>4} "
+          f"{'BE_obs':>9} {'BE_bare':>9} {'err_b%':>7} "
+          f"{'+Coul':>8} {'+asym':>8} {'+pair':>7} "
+          f"{'BE_corr':>9} {'err_c%':>7}")
+    print("-" * 100)
+    for r in results:
+        iso = r.isotope
+        coul = r.BE_coul_MeV if r.BE_coul_MeV is not None else 0.0
+        asym = r.BE_asym_MeV if r.BE_asym_MeV is not None else 0.0
+        pair = r.BE_pair_MeV if r.BE_pair_MeV is not None else 0.0
+        corr = (r.BE_pred_corr_MeV
+                if r.BE_pred_corr_MeV is not None else r.BE_pred_MeV)
+        err_c = (100.0 * (corr - r.BE_obs_MeV) / r.BE_obs_MeV)
+        print(f"{iso.name:>6} {iso.Z:>3d} {iso.A:>4d} "
+              f"{r.BE_obs_MeV:>9.2f} {r.BE_pred_MeV:>9.2f} "
+              f"{r.err_pct:>+7.2f} "
+              f"{coul:>+8.2f} {asym:>+8.2f} {pair:>+7.2f} "
+              f"{corr:>9.2f} {err_c:>+7.2f}")
 
 
 # ---------------------------------------------------------------------------
@@ -313,5 +551,42 @@ def demo() -> None:
                   f"BE_obs = {r.BE_obs_MeV:.1f})")
 
 
+def demo_with_corrections() -> None:
+    """End-to-end print: bare substrate vs substrate + SEMF corrections.
+
+    Reports for the 25 AME2020 isotopes:
+      * bare substrate: BE = eta_coop * P * eps_face
+      * corrected:      BE_bare + Coulomb + asymmetry + pairing
+    with substrate-derived a_C = 0.7200 MeV (= (3/5)alpha hbar c / R_0)
+    and empirical a_sym = 23, a_p = 11 MeV.
+    """
+    results = compute_results_with_corrections()
+    print_table_with_corrections(results)
+    print()
+
+    bare_stats = summary_statistics(results, use_corrected=False)
+    corr_stats = summary_statistics(results, use_corrected=True)
+
+    print(f"BARE SUBSTRATE:")
+    print(f"  mean abs err = {bare_stats['mean_abs_err_pct']:.2f}%   "
+          f"RMS = {bare_stats['rms_err_pct']:.2f}%   "
+          f"max = {bare_stats['max_abs_err_pct']:.2f}%")
+    print(f"SUBSTRATE + Coulomb + asymmetry + pairing:")
+    print(f"  mean abs err = {corr_stats['mean_abs_err_pct']:.2f}%   "
+          f"RMS = {corr_stats['rms_err_pct']:.2f}%   "
+          f"max = {corr_stats['max_abs_err_pct']:.2f}%")
+    print()
+    print(f"Coefficients:")
+    print(f"  a_C = {A_COULOMB_MEV:.4f} MeV   "
+          f"= (3/5) * alpha * hbar*c / R_0   (R_0 = {R_0_FM} fm)")
+    print(f"  a_sym = {A_SYMMETRY_MEV} MeV   (empirical, NOT substrate-derived)")
+    print(f"  a_p   = {A_PAIRING_MEV} MeV   (empirical, NOT substrate-derived)")
+
+
 if __name__ == "__main__":
     demo()
+    print()
+    print("=" * 100)
+    print("WITH SEMF CORRECTIONS")
+    print("=" * 100)
+    demo_with_corrections()

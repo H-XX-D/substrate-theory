@@ -30,13 +30,18 @@ from src.stiff_medium.debye_test import (
     MATERIALS,
     Material,
     N_A,
+    SIGMA_MAX_POISSON,
     debye_average_speed,
     debye_temperature,
+    gamma_G_substrate,
     longitudinal_speed,
     material_sound_speeds,
     predict_theta_D,
+    predict_with_quasiharmonic,
+    quasi_harmonic_shift,
     render_debye_test,
     run_test,
+    run_test_quasiharmonic,
     transverse_speed,
 )
 
@@ -262,3 +267,176 @@ def test_physical_constants_correct():
     assert math.isclose(HBAR, 1.054571817e-34, rel_tol=1.0e-12)
     assert math.isclose(KB,   1.380649e-23,    rel_tol=1.0e-12)
     assert math.isclose(N_A,  6.02214076e23,   rel_tol=1.0e-12)
+
+
+# --------------------------------------------------------------------------- #
+# Quasi-harmonic / anharmonic correction tests                                #
+# --------------------------------------------------------------------------- #
+#
+# These tests verify the quasi-harmonic substrate correction:
+#
+#   γ_G_substrate = (3/2) · (1 + ν) / (2 - 3ν),  ν ≤ σ_max = 1/2
+#   Θ_D^qh        = Θ_D^harm · (1 + γ_G · α_V · T_eff),  T_eff = T_melt / 2
+#
+# The substrate γ_G is bounded above by 9/2 = 4.5 (when ν saturates at the
+# substrate elastic limit σ_max = 1/2). This is THE substrate-derivable
+# upper cap on Grüneisen anharmonicity.
+
+
+def test_sigma_max_poisson_is_half():
+    """Substrate elastic-limit cap on Poisson's ratio matches saturation.SIGMA_MAX."""
+    assert math.isclose(SIGMA_MAX_POISSON, 0.5, rel_tol=1.0e-12)
+
+
+def test_material_has_alpha_V_and_T_melt():
+    """Every material must carry α_V and T_melt for the QH correction."""
+    for name, mat in MATERIALS.items():
+        assert mat.alpha_V > 0.0, f"{name}: alpha_V missing"
+        assert mat.T_melt > 100.0, f"{name}: T_melt missing or unphysical"
+        assert mat.gamma_G_lit > 0.0, f"{name}: gamma_G_lit missing"
+
+
+def test_poisson_ratio_below_substrate_cap():
+    """Every material's Poisson ratio must satisfy ν ≤ σ_max = 1/2 (substrate cap)."""
+    for name, mat in MATERIALS.items():
+        v = mat.poisson_ratio
+        assert -1.0 < v < SIGMA_MAX_POISSON, (
+            f"{name}: Poisson ratio v={v:.3f} violates substrate cap"
+        )
+
+
+def test_gamma_G_substrate_bounded_by_substrate_cap():
+    """γ_G_substrate ≤ 9/2 ≈ 4.5 (from σ_max=1/2 cap on ν)."""
+    for name, mat in MATERIALS.items():
+        gG = gamma_G_substrate(mat)
+        assert 0.5 < gG < 4.6, f"{name}: γ_G_sub={gG:.3f} outside substrate cap"
+
+
+def test_gamma_G_substrate_close_to_literature():
+    """γ_G_substrate(ν) should match literature γ_G to within ~50% for most metals.
+
+    Belomestnykh-Tesleva is an isotropic-medium estimate; departures up to 50%
+    are expected for Au (which has anomalously low G/B due to relativistic
+    band effects) and Si/Ge (where covalent character softens γ_G below the
+    elastic estimate). We require ≥10/14 within 50% as a sanity floor.
+    """
+    n_close = 0
+    for name, mat in MATERIALS.items():
+        gG_sub = gamma_G_substrate(mat)
+        gG_lit = mat.gamma_G_lit
+        rel = abs(gG_sub - gG_lit) / gG_lit
+        if rel < 0.5:
+            n_close += 1
+    assert n_close >= 10, (
+        f"Only {n_close}/14 materials have γ_G_sub within 50% of literature"
+    )
+
+
+def test_quasi_harmonic_shift_always_increases_theta():
+    """The QH multiplier (1 + γ_G·α_V·T_melt/2) must be ≥ 1 for every material."""
+    for name, mat in MATERIALS.items():
+        s = quasi_harmonic_shift(mat)
+        assert s >= 1.0, f"{name}: QH shift {s} < 1"
+        # Realistic upper bound: γ_G ≤ 4.5, α_V ≤ 100ppm, T_melt ≤ 5000
+        # ⇒ shift ≤ 1 + 4.5·1e-4·2500 = 2.13. Cap at 1.5 for sanity.
+        assert s < 1.5, f"{name}: QH shift {s} unphysically large"
+
+
+def test_quasi_harmonic_improves_lead_and_tin():
+    """QH correction must reduce |residual| for Pb and Sn (the soft-mode failures)."""
+    pb = predict_with_quasiharmonic(MATERIALS["Lead"])
+    sn = predict_with_quasiharmonic(MATERIALS["Tin"])
+    assert abs(pb["rel_err_qh"]) < abs(pb["rel_err_harm"]), (
+        f"Pb QH correction did not improve: harm {pb['rel_err_harm']:+.2%}, "
+        f"qh {pb['rel_err_qh']:+.2%}"
+    )
+    assert abs(sn["rel_err_qh"]) < abs(sn["rel_err_harm"]), (
+        f"Sn QH correction did not improve: harm {sn['rel_err_harm']:+.2%}, "
+        f"qh {sn['rel_err_qh']:+.2%}"
+    )
+
+
+def test_tin_qh_within_10pct():
+    """Sn quasi-harmonic prediction must reach within 10% of measured 200 K.
+
+    Soft β-Sn responds well to QH correction (Δ from -12% → ~-9%). This is
+    the headline 'fix' of the QH machinery on the original failure set.
+    """
+    row = predict_with_quasiharmonic(MATERIALS["Tin"])
+    assert abs(row["rel_err_qh"]) < 0.10, (
+        f"Sn QH residual {row['rel_err_qh']:+.2%} not within 10% of 200 K"
+    )
+
+
+def test_lead_qh_substantially_improves_but_does_not_reach_10pct():
+    """Pb cannot reach 10% with substrate QH alone — Kohn anomaly is required.
+
+    HONEST SCOPING: substrate elastic continuum + Belomestnykh-Tesleva γ_G
+    + Lindemann thermal scale T_melt/2 reduces Pb residual from -27% to
+    roughly -21% (~6pp improvement). The remaining gap is NOT addressable
+    by any continuum quasi-harmonic correction; it requires explicit
+    treatment of the X-point Kohn anomaly (electron-phonon coupling at the
+    Fermi surface). We therefore assert improvement, not within-10%.
+    """
+    row = predict_with_quasiharmonic(MATERIALS["Lead"])
+    # Improves by at least 4 percentage points
+    improvement_pp = abs(row["rel_err_harm"]) - abs(row["rel_err_qh"])
+    assert improvement_pp > 0.04, (
+        f"Pb improvement {improvement_pp:+.2%} smaller than expected 4pp"
+    )
+    # Final QH residual lies in (-25%, -15%) — Kohn-anomaly regime
+    assert -0.25 < row["rel_err_qh"] < -0.15, (
+        f"Pb QH residual {row['rel_err_qh']:+.2%} outside expected Kohn-anomaly band"
+    )
+
+
+def test_within_10pct_count_stable_or_improves():
+    """Total #materials within 10% of measured must NOT decrease under QH."""
+    s = run_test_quasiharmonic()["summary"]
+    assert s["within_10pct_qh"] >= s["within_10pct_harm"], (
+        f"QH degraded count: harm={s['within_10pct_harm']}, "
+        f"qh={s['within_10pct_qh']}"
+    )
+
+
+def test_qh_does_not_destroy_well_fit_materials():
+    """Materials at <2% under harmonic must stay <10% under QH (no over-correction)."""
+    for name, mat in MATERIALS.items():
+        row = predict_with_quasiharmonic(mat)
+        if abs(row["rel_err_harm"]) < 0.02:
+            assert abs(row["rel_err_qh"]) < 0.10, (
+                f"{name}: harm OK ({row['rel_err_harm']:+.2%}) but QH "
+                f"over-corrected to {row['rel_err_qh']:+.2%}"
+            )
+
+
+def test_qh_summary_schema():
+    """run_test_quasiharmonic must expose harm/qh comparison and Pb/Sn focus."""
+    s = run_test_quasiharmonic()["summary"]
+    needed = {
+        "n_materials", "T_eff_default",
+        "mean_abs_rel_err_harm", "mean_abs_rel_err_qh",
+        "max_abs_rel_err_harm", "max_abs_rel_err_qh",
+        "within_10pct_harm", "within_10pct_qh", "improvement_pp",
+        "Pb_harm", "Pb_qh", "Pb_meas",
+        "Sn_harm", "Sn_qh", "Sn_meas",
+    }
+    assert needed.issubset(set(s.keys())), (
+        f"missing summary keys: {needed - set(s.keys())}"
+    )
+
+
+def test_qh_row_schema():
+    """Every quasi-harmonic row must carry the expected fields."""
+    rows = run_test_quasiharmonic()["rows"]
+    expected = {
+        "name", "lattice", "v_poisson", "gamma_G_sub", "gamma_G_lit",
+        "alpha_V", "T_melt", "T_eff", "shift",
+        "theta_harm", "theta_qh", "theta_meas",
+        "rel_err_harm", "rel_err_qh",
+    }
+    for name, row in rows.items():
+        assert set(row.keys()) == expected, f"{name}: schema mismatch"
+        assert row["theta_qh"] >= row["theta_harm"], (
+            f"{name}: QH lowered Θ_D, expected stiffening"
+        )

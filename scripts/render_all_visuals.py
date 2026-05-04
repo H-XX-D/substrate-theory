@@ -9868,25 +9868,32 @@ def render_nuclear_be_test() -> list[str]:
     """Render visuals/121_nuclear_be_test.png.
 
     Two-panel figure:
-      Top:    BE/A vs A -- substrate prediction (red squares) vs AME2020
-              (black circles), 25 isotopes from deuteron to U-238.
-      Bottom: Residual = BE_pred - BE_obs (MeV) vs A, with the textbook
-              Coulomb deficit ~ 0.72 * Z(Z-1) / A^{1/3} overlaid.
+      Top:    BE/A vs A for AME2020 (black circles), bare substrate
+              (red squares), and substrate + textbook SEMF corrections
+              (blue triangles).  25 isotopes from deuteron to U-238.
+      Bottom: Residual = BE_pred - BE_obs (MeV) vs A for both bare
+              and corrected, with the textbook Coulomb deficit
+              ~ 0.72 * Z(Z-1) / A^{1/3} overlaid for reference.
     """
     from src.stiff_medium.nuclear_be_test import (
+        A_COULOMB_MEV,
         compute_results,
+        compute_results_with_corrections,
         summary_statistics,
     )
 
     results = compute_results()
+    results_corr = compute_results_with_corrections()
     stats = summary_statistics(results)
+    stats_corr = summary_statistics(results_corr, use_corrected=True)
 
     A_arr = np.array([r.isotope.A for r in results])
     Z_arr = np.array([r.isotope.Z for r in results])
     BE_pred_per_A = np.array([r.BE_pred_per_A for r in results])
     BE_obs_per_A = np.array([r.BE_obs_per_A for r in results])
+    BE_corr_per_A = np.array([r.BE_pred_corr_per_A for r in results_corr])
     err_MeV = np.array([r.err_abs_MeV for r in results])
-    err_pct = np.array([r.err_pct for r in results])
+    err_corr_MeV = np.array([r.err_abs_corr_MeV for r in results_corr])
 
     # Sort by A for plotting
     order = np.argsort(A_arr)
@@ -9894,8 +9901,9 @@ def render_nuclear_be_test() -> list[str]:
     Z_arr = Z_arr[order]
     BE_pred_per_A = BE_pred_per_A[order]
     BE_obs_per_A = BE_obs_per_A[order]
+    BE_corr_per_A = BE_corr_per_A[order]
     err_MeV = err_MeV[order]
-    err_pct = err_pct[order]
+    err_corr_MeV = err_corr_MeV[order]
     names = [results[i].isotope.name for i in order]
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 9), sharex=True,
@@ -9904,8 +9912,12 @@ def render_nuclear_be_test() -> list[str]:
     # ----- Top: BE/A vs A -----
     ax1.plot(A_arr, BE_obs_per_A, 'ko-', markersize=7, linewidth=1.2,
              alpha=0.85, label='AME2020 (measured)')
-    ax1.plot(A_arr, BE_pred_per_A, 'rs--', markersize=9, linewidth=1.4,
-             alpha=0.85, label=r'Substrate: $\eta_{coop}\cdot P(A)\cdot\varepsilon_{face}$')
+    ax1.plot(A_arr, BE_pred_per_A, 'rs--', markersize=8, linewidth=1.2,
+             alpha=0.85,
+             label=r'Bare substrate: $\eta_{coop}\cdot P(A)\cdot\varepsilon_{face}$')
+    ax1.plot(A_arr, BE_corr_per_A, 'b^:', markersize=8, linewidth=1.2,
+             alpha=0.75,
+             label=r'Substrate + Coulomb + asym + pairing')
 
     # Annotate select isotopes
     annotate_set = {'2H', '4He', '12C', '56Fe', '208Pb', '238U'}
@@ -9919,39 +9931,46 @@ def render_nuclear_be_test() -> list[str]:
     ax1.text(56, 9.6, 'Fe-56 BE/A peak', ha='center', fontsize=9,
              color='gray')
     ax1.set_ylabel('BE / A   [MeV / nucleon]', fontsize=11)
-    ax1.set_title('Substrate nuclear binding energy vs AME2020 (25 isotopes)\n'
-                  r'$\varepsilon_{face} = \Lambda_{QCD}/(n_A\cdot N_{BAM}) = 200/90 = 2.222$ MeV'
-                  '   (zero free parameters beyond 3 light-nucleus anchors)',
-                  fontsize=11)
-    ax1.legend(loc='lower right', fontsize=10)
+    ax1.set_title(
+        'Substrate nuclear binding energy vs AME2020 (25 isotopes)\n'
+        r'$\varepsilon_{face} = \Lambda_{QCD}/(n_A\cdot N_{BAM}) = 200/90 = 2.222$ MeV    '
+        r'$a_C = (3/5)\,\alpha\,\hbar c / R_0 = 0.7200$ MeV   '
+        r'$a_{sym}=23,\, a_p=11$ MeV',
+        fontsize=10.5)
+    ax1.legend(loc='lower right', fontsize=9)
     ax1.grid(True, alpha=0.3)
     ax1.set_ylim(0, 11)
 
     # Inline stats box
     stat_str = (
         f"n = {stats['n_isotopes']}\n"
-        f"mean abs err = {stats['mean_abs_err_pct']:.1f}%\n"
-        f"RMS err = {stats['rms_err_pct']:.1f}%\n"
-        f"max err = {stats['max_abs_err_pct']:.1f}% (7Li)\n"
-        f"within 5%: 7 / 25"
+        f"BARE     mean abs = {stats['mean_abs_err_pct']:.1f}%   RMS = {stats['rms_err_pct']:.1f}%\n"
+        f"+SEMF   mean abs = {stats_corr['mean_abs_err_pct']:.1f}%   RMS = {stats_corr['rms_err_pct']:.1f}%\n"
+        f"(textbook a_sym=23 over-corrects;\n"
+        f"see analysis/nuclear_be_ame2020_test_results.md)"
     )
     ax1.text(0.02, 0.97, stat_str, transform=ax1.transAxes,
              fontsize=9, va='top', ha='left',
              bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
     # ----- Bottom: residual + Coulomb deficit overlay -----
-    # Substrate residual: BE_pred - BE_obs (MeV)
-    ax2.bar(A_arr, err_MeV, width=2.0, color='red', alpha=0.6,
-            edgecolor='darkred', label='Substrate residual (pred - obs)')
+    # Bare substrate residual (red bars)
+    width = 1.6
+    ax2.bar(A_arr - width/2, err_MeV, width=width, color='red', alpha=0.6,
+            edgecolor='darkred', label='Bare substrate residual (pred - obs)')
+    # Corrected residual (blue bars)
+    ax2.bar(A_arr + width/2, err_corr_MeV, width=width,
+            color='steelblue', alpha=0.6, edgecolor='navy',
+            label='Substrate + SEMF corrections residual')
 
     # Textbook Coulomb deficit: 0.72 * Z(Z-1) / A^{1/3}
     # (this is what an unsubtracted Coulomb term *would* contribute)
     A_smooth = np.linspace(2, 240, 240)
     # Use Z = A/2 for the smooth curve (rough valley of stability)
     Z_smooth = 0.5 * A_smooth
-    coulomb = 0.72 * Z_smooth * (Z_smooth - 1) / (A_smooth ** (1.0 / 3.0))
-    ax2.plot(A_smooth, coulomb, 'b--', linewidth=1.5, alpha=0.7,
-             label=r'Textbook Coulomb deficit  $\sim 0.72\,Z(Z-1)/A^{1/3}$ MeV')
+    coulomb = A_COULOMB_MEV * Z_smooth * (Z_smooth - 1) / (A_smooth ** (1.0 / 3.0))
+    ax2.plot(A_smooth, coulomb, 'k--', linewidth=1.4, alpha=0.7,
+             label=r'Substrate Coulomb deficit  $a_C\,Z(Z-1)/A^{1/3}$')
 
     ax2.axhline(0, color='black', linewidth=0.8)
     ax2.set_xlabel('Mass number A', fontsize=11)

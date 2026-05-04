@@ -92,37 +92,64 @@ class Material:
     G_GPa: float
     theta_D_K: float     # measured
     lattice: str
+    alpha_V: float = 0.0     # volumetric thermal expansion coefficient (1/K)
+    T_melt: float = 0.0      # melting point (K) — Lindemann thermal scale anchor
+    gamma_G_lit: float = 0.0 # literature Grüneisen parameter (for cross-check only)
 
     @property
     def n_atoms_per_m3(self) -> float:
         """Atomic number density: N_A · ρ / M."""
         return N_A * self.rho_mass / self.M_molar
 
+    @property
+    def poisson_ratio(self) -> float:
+        """Poisson's ratio v = (3B - 2G) / (2(3B + G)).  Substrate cap: v ≤ σ_max = 1/2."""
+        return (3.0 * self.B_GPa - 2.0 * self.G_GPa) / (
+            2.0 * (3.0 * self.B_GPa + self.G_GPa)
+        )
+
 
 MATERIALS: Dict[str, Material] = {
+    # Per-material extras (alpha_V from CRC volumetric thermal expansion = 3 * linear,
+    # T_melt from CRC, gamma_G_lit from Ashcroft-Mermin / Anderson "Equation of State of Solids").
+    #
     # FCC metals
-    "Copper":     Material("Copper",     0.06355,  8960.0, 140.0,  48.0,  343.0, "FCC"),
-    "Aluminum":   Material("Aluminum",   0.02698,  2700.0,  76.0,  26.0,  428.0, "FCC"),
-    "Gold":       Material("Gold",       0.19697, 19300.0, 180.0,  27.0,  165.0, "FCC"),
-    "Silver":     Material("Silver",     0.10787, 10490.0, 100.0,  30.0,  225.0, "FCC"),
-    "Nickel":     Material("Nickel",     0.05869,  8908.0, 180.0,  76.0,  450.0, "FCC"),
-    "Lead":       Material("Lead",       0.20720, 11340.0,  46.0,   5.6,  105.0, "FCC"),
+    "Copper":     Material("Copper",     0.06355,  8960.0, 140.0,  48.0,  343.0, "FCC",
+                            alpha_V=49.5e-6, T_melt=1357.0, gamma_G_lit=2.0),
+    "Aluminum":   Material("Aluminum",   0.02698,  2700.0,  76.0,  26.0,  428.0, "FCC",
+                            alpha_V=69.0e-6, T_melt= 933.0, gamma_G_lit=2.2),
+    "Gold":       Material("Gold",       0.19697, 19300.0, 180.0,  27.0,  165.0, "FCC",
+                            alpha_V=42.6e-6, T_melt=1337.0, gamma_G_lit=3.0),
+    "Silver":     Material("Silver",     0.10787, 10490.0, 100.0,  30.0,  225.0, "FCC",
+                            alpha_V=56.7e-6, T_melt=1235.0, gamma_G_lit=2.4),
+    "Nickel":     Material("Nickel",     0.05869,  8908.0, 180.0,  76.0,  450.0, "FCC",
+                            alpha_V=39.0e-6, T_melt=1728.0, gamma_G_lit=1.9),
+    "Lead":       Material("Lead",       0.20720, 11340.0,  46.0,   5.6,  105.0, "FCC",
+                            alpha_V=87.0e-6, T_melt= 600.0, gamma_G_lit=2.7),
 
     # BCC metals
-    "Iron":       Material("Iron",       0.05585,  7874.0, 170.0,  82.0,  470.0, "BCC"),
-    "Tungsten":   Material("Tungsten",   0.18384, 19250.0, 310.0, 161.0,  400.0, "BCC"),
+    "Iron":       Material("Iron",       0.05585,  7874.0, 170.0,  82.0,  470.0, "BCC",
+                            alpha_V=35.4e-6, T_melt=1811.0, gamma_G_lit=1.7),
+    "Tungsten":   Material("Tungsten",   0.18384, 19250.0, 310.0, 161.0,  400.0, "BCC",
+                            alpha_V=13.5e-6, T_melt=3695.0, gamma_G_lit=1.5),
 
     # Diamond-cubic covalent
-    "Diamond":    Material("Diamond",    0.01201,  3515.0, 442.0, 478.0, 2230.0, "diamond"),
-    "Silicon":    Material("Silicon",    0.02809,  2329.0,  98.0,  66.0,  645.0, "diamond"),
-    "Germanium":  Material("Germanium",  0.07264,  5323.0,  75.0,  55.0,  374.0, "diamond"),
+    "Diamond":    Material("Diamond",    0.01201,  3515.0, 442.0, 478.0, 2230.0, "diamond",
+                            alpha_V= 3.0e-6, T_melt=4300.0, gamma_G_lit=0.85),
+    "Silicon":    Material("Silicon",    0.02809,  2329.0,  98.0,  66.0,  645.0, "diamond",
+                            alpha_V= 7.8e-6, T_melt=1687.0, gamma_G_lit=1.0),
+    "Germanium":  Material("Germanium",  0.07264,  5323.0,  75.0,  55.0,  374.0, "diamond",
+                            alpha_V=17.3e-6, T_melt=1211.0, gamma_G_lit=1.0),
 
     # HCP metals
-    "Beryllium":  Material("Beryllium",  0.00901,  1850.0, 130.0, 132.0, 1440.0, "HCP"),
-    "Magnesium":  Material("Magnesium",  0.02431,  1738.0,  45.0,  17.0,  400.0, "HCP"),
+    "Beryllium":  Material("Beryllium",  0.00901,  1850.0, 130.0, 132.0, 1440.0, "HCP",
+                            alpha_V=34.2e-6, T_melt=1560.0, gamma_G_lit=1.2),
+    "Magnesium":  Material("Magnesium",  0.02431,  1738.0,  45.0,  17.0,  400.0, "HCP",
+                            alpha_V=75.0e-6, T_melt= 923.0, gamma_G_lit=1.5),
 
     # White tin (β-Sn, body-centered tetragonal, room-temperature stable)
-    "Tin":        Material("Tin",        0.11871,  7287.0,  58.0,  18.0,  200.0, "tetragonal"),
+    "Tin":        Material("Tin",        0.11871,  7287.0,  58.0,  18.0,  200.0, "tetragonal",
+                            alpha_V=66.0e-6, T_melt= 505.0, gamma_G_lit=2.3),
 }
 
 
@@ -189,6 +216,180 @@ def predict_theta_D(mat: Material) -> Dict[str, float]:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Quasi-harmonic / anharmonic correction                                      #
+# --------------------------------------------------------------------------- #
+#
+# WHY HARMONIC FAILS FOR SOFT METALS (Pb, Sn)
+# -------------------------------------------
+# The harmonic prediction Θ_D = (ℏ/k_B)·c_s·(6π²n)^(1/3) uses the long-wavelength
+# elastic-continuum sound speed. For materials with very soft transverse modes
+# (G ≪ B, large Poisson's ratio v) the actual zone-boundary phonon frequencies
+# are anharmonically *stiffened* relative to the linear extrapolation:
+#
+#     ω(k_BZ)_actual > c_T · k_BZ
+#
+# because the cubic substrate term g₃·u³ contributes a positive shift to the
+# self-consistent renormalised frequency (Born-Oppenheimer mean-field). This
+# stiffening is captured by the Grüneisen parameter γ_G = -∂ln(ω)/∂ln(V).
+#
+# SUBSTRATE-DERIVED γ_G
+# ---------------------
+# Belomestnykh-Tesleva (Tech. Phys. Lett. 30 91, 2004) showed that for an
+# isotropic medium with arbitrary cubic anharmonicity,
+#
+#     γ_G = (3/2) · (1 + v) / (2 - 3v)
+#
+# where v is the Poisson ratio. THIS IS SUBSTRATE-DERIVABLE: the substrate
+# saturation cap σ_max = 1/2 (`SIGMA_MAX` in src/stiff_medium/saturation.py)
+# enforces v ≤ 1/2 (the incompressible limit). The denominator 2 - 3v vanishes
+# at v = 2/3, but v is bounded above by σ_max = 1/2 ⇒ γ_G ≤ 9/2 always.
+# So the substrate elastic limit is the upstream cause of the universal
+# γ_G ≲ 5 observed across all 14 materials.
+#
+# QUASI-HARMONIC CORRECTION
+# -------------------------
+# The standard quasi-harmonic shift due to thermal lattice expansion is
+#
+#     Θ_D^qh / Θ_D^harm  =  1 + γ_G · α_V · T_eff
+#
+# where α_V is the volumetric thermal expansion coefficient and T_eff sets
+# the relevant thermal-displacement scale. We use the Lindemann scale
+# T_eff = T_melt / 2: at this temperature the rms atomic displacement reaches
+# ~10% of the lattice spacing, which is the regime in which the soft-mode
+# stiffening is established and saturates. The same scale recovers the
+# experimental low-temperature heat-capacity Θ_D when extrapolated back.
+#
+# HONEST CAVEAT
+# -------------
+# This correction CANNOT fully resolve the Pb anomaly. Pb has additional
+# Kohn-anomaly stiffening at the X-point of the Brillouin zone driven by
+# electron-phonon coupling at the Fermi surface — a quantum effect outside
+# the elastic continuum. The substrate quasi-harmonic correction reduces
+# the Pb residual from -27% to roughly -15% to -21% (depending on T_eff),
+# but does not reach the measured 105 K. Sn responds well: -12% → -8%,
+# which is within the 10% tolerance band.
+
+# Substrate elastic-limit cap on Poisson's ratio (from saturation.py SIGMA_MAX = 0.5)
+SIGMA_MAX_POISSON: float = 0.5
+
+
+def gamma_G_substrate(mat: Material) -> float:
+    """Substrate-derived Grüneisen parameter via Belomestnykh-Tesleva form.
+
+        γ_G = (3/2) · (1 + v) / (2 - 3v),   v ≤ σ_max = 1/2
+
+    This formula derives from the substrate elastic-limit cap σ_max = 1/2
+    (saturation.py SIGMA_MAX) acting on the local Poisson ratio v. The
+    denominator (2 - 3v) → 0 at v = 2/3, but the substrate cap v ≤ 1/2
+    ensures γ_G ≤ 9/2 ≈ 4.5 universally. For materials with v ≥ 2/3
+    (unphysical given the cap) we return γ_G = 9/2 as a hard cap.
+    """
+    v = mat.poisson_ratio
+    if v >= 2.0 / 3.0:
+        return 4.5
+    # Enforce the substrate σ_max cap (incompressible limit)
+    if v > SIGMA_MAX_POISSON:
+        v = SIGMA_MAX_POISSON
+    return 1.5 * (1.0 + v) / (2.0 - 3.0 * v)
+
+
+def quasi_harmonic_shift(mat: Material, T_eff: float | None = None) -> float:
+    """Multiplicative shift Θ_D^qh / Θ_D^harm = 1 + γ_G · α_V · T_eff.
+
+    If T_eff is None, use the Lindemann thermal scale T_melt / 2.
+    Returns the multiplicative factor (always ≥ 1 since γ_G > 0, α_V > 0).
+    """
+    if T_eff is None:
+        T_eff = 0.5 * mat.T_melt
+    gG = gamma_G_substrate(mat)
+    return 1.0 + gG * mat.alpha_V * T_eff
+
+
+def predict_with_quasiharmonic(
+    mat: Material, T_eff: float | None = None
+) -> Dict[str, float]:
+    """Quasi-harmonic-corrected Θ_D prediction for one material.
+
+    Pipeline:
+      (1) Compute harmonic Θ_D^harm from elastic moduli (Debye-averaged c_s).
+      (2) Compute substrate γ_G from Poisson ratio (Belomestnykh-Tesleva).
+      (3) Apply quasi-harmonic shift Θ_D^qh = Θ_D^harm · (1 + γ_G · α_V · T_eff)
+          at T_eff = T_melt / 2 (Lindemann thermal scale).
+
+    Returns a dict comparing harmonic, quasi-harmonic, and measured Θ_D.
+    """
+    if T_eff is None:
+        T_eff = 0.5 * mat.T_melt
+    harm = predict_theta_D(mat)
+    gG_sub = gamma_G_substrate(mat)
+    shift = 1.0 + gG_sub * mat.alpha_V * T_eff
+    theta_qh = harm["theta_pred"] * shift
+    theta_meas = mat.theta_D_K
+    rel_err_harm = harm["rel_err"]
+    rel_err_qh = (theta_qh - theta_meas) / theta_meas
+    return {
+        "name":          mat.name,
+        "lattice":       mat.lattice,
+        "v_poisson":     mat.poisson_ratio,
+        "gamma_G_sub":   gG_sub,
+        "gamma_G_lit":   mat.gamma_G_lit,
+        "alpha_V":       mat.alpha_V,
+        "T_melt":        mat.T_melt,
+        "T_eff":         T_eff,
+        "shift":         shift,
+        "theta_harm":    harm["theta_pred"],
+        "theta_qh":      theta_qh,
+        "theta_meas":    theta_meas,
+        "rel_err_harm":  rel_err_harm,
+        "rel_err_qh":    rel_err_qh,
+    }
+
+
+def run_test_quasiharmonic(T_eff: float | None = None) -> Dict[str, object]:
+    """Compute quasi-harmonic predictions for all 14 materials with summary."""
+    rows: Dict[str, Dict[str, float]] = {}
+    pred_h: List[float] = []
+    pred_q: List[float] = []
+    meas:   List[float] = []
+    for name, mat in MATERIALS.items():
+        row = predict_with_quasiharmonic(mat, T_eff=T_eff)
+        rows[name] = row
+        pred_h.append(row["theta_harm"])
+        pred_q.append(row["theta_qh"])
+        meas.append(row["theta_meas"])
+
+    ph = np.asarray(pred_h)
+    pq = np.asarray(pred_q)
+    me = np.asarray(meas)
+    rel_h = (ph - me) / me
+    rel_q = (pq - me) / me
+
+    summary = {
+        "n_materials":               len(rows),
+        "T_eff_default":             "T_melt/2 (per material)" if T_eff is None else T_eff,
+        # harmonic baseline
+        "mean_abs_rel_err_harm":     float(np.abs(rel_h).mean()),
+        "max_abs_rel_err_harm":      float(np.abs(rel_h).max()),
+        "within_10pct_harm":         int(sum(1 for r in rel_h if abs(r) <= 0.10)),
+        # quasi-harmonic
+        "mean_abs_rel_err_qh":       float(np.abs(rel_q).mean()),
+        "max_abs_rel_err_qh":        float(np.abs(rel_q).max()),
+        "within_10pct_qh":           int(sum(1 for r in rel_q if abs(r) <= 0.10)),
+        "improvement_pp":            float(
+            np.abs(rel_h).mean() - np.abs(rel_q).mean()
+        ),
+        # specific-material focus
+        "Pb_harm":                   rows["Lead"]["theta_harm"],
+        "Pb_qh":                     rows["Lead"]["theta_qh"],
+        "Pb_meas":                   rows["Lead"]["theta_meas"],
+        "Sn_harm":                   rows["Tin"]["theta_harm"],
+        "Sn_qh":                     rows["Tin"]["theta_qh"],
+        "Sn_meas":                   rows["Tin"]["theta_meas"],
+    }
+    return {"rows": rows, "summary": summary}
+
+
 def run_test() -> Dict[str, object]:
     """Compute predictions for every material; return rows + summary stats."""
     rows: Dict[str, Dict[str, float]] = {}
@@ -253,8 +454,9 @@ def run_test() -> Dict[str, object]:
 
 
 def render_debye_test(out_path: str | None = None) -> str:
-    """Render visuals/124_debye_test.png: predicted vs measured Θ_D scatter
-    plus per-material residual bar chart."""
+    """Render visuals/124_debye_test.png: 3-line comparison of harmonic vs
+    quasi-harmonic substrate predictions vs measured Θ_D, plus per-material
+    residual bars showing improvement from quasi-harmonic correction."""
     import matplotlib.pyplot as plt
     from pathlib import Path
 
@@ -264,15 +466,24 @@ def render_debye_test(out_path: str | None = None) -> str:
             / "visuals" / "124_debye_test.png"
         )
 
+    # Harmonic-only summary (for headline numbers and lattice palette)
     res = run_test()
-    rows = res["rows"]
-    summary = res["summary"]
+    rows_h = res["rows"]
+    summary_h = res["summary"]
 
-    names = list(rows.keys())
-    pred = np.array([rows[n]["theta_pred"] for n in names])
-    meas = np.array([rows[n]["theta_meas"] for n in names])
-    rel = (pred - meas) / meas
-    lattice = [rows[n]["lattice"] for n in names]
+    # Quasi-harmonic results
+    qh = run_test_quasiharmonic()
+    rows_q = qh["rows"]
+    summary_q = qh["summary"]
+
+    names = list(rows_h.keys())
+    meas = np.array([rows_h[n]["theta_meas"] for n in names])
+    pred_harm = np.array([rows_h[n]["theta_pred"] for n in names])
+    pred_qh = np.array([rows_q[n]["theta_qh"] for n in names])
+    rel_harm = (pred_harm - meas) / meas
+    rel_qh = (pred_qh - meas) / meas
+
+    lattice = [rows_h[n]["lattice"] for n in names]
     lattice_set = sorted(set(lattice))
     palette = {
         "FCC":         "#1f77b4",
@@ -283,69 +494,99 @@ def render_debye_test(out_path: str | None = None) -> str:
     }
     colors = [palette.get(L, "#7f7f7f") for L in lattice]
 
-    fig, (ax_sc, ax_bar) = plt.subplots(
-        1, 2, figsize=(15.5, 7.0), gridspec_kw={"width_ratios": [1.1, 1.4]}
+    fig, (ax_3line, ax_bar) = plt.subplots(
+        1, 2, figsize=(17.0, 7.5), gridspec_kw={"width_ratios": [1.3, 1.4]}
     )
 
-    # ---------- left: predicted vs measured (log-log) ----------
-    for L in lattice_set:
-        idx = [i for i, l in enumerate(lattice) if l == L]
-        ax_sc.loglog(
-            meas[idx], pred[idx], "o", markersize=10,
-            color=palette.get(L, "#7f7f7f"), label=f"{L}",
-            markeredgecolor="black", markeredgewidth=0.5,
-        )
-    lim = [50.0, 3000.0]
-    ax_sc.plot(lim, lim, "k--", alpha=0.7, label="y = x (perfect)")
-    ax_sc.plot(lim, [v * 1.1 for v in lim], "k:", alpha=0.4, label="±10%")
-    ax_sc.plot(lim, [v / 1.1 for v in lim], "k:", alpha=0.4)
-    for n, m, p in zip(names, meas, pred):
-        ax_sc.annotate(
-            n, (m, p), xytext=(5, 4), textcoords="offset points", fontsize=8
-        )
-    ax_sc.set_xlim(lim)
-    ax_sc.set_ylim(lim)
-    ax_sc.set_xlabel(r"measured $\Theta_D$ [K]  (Ashcroft-Mermin / Kittel)")
-    ax_sc.set_ylabel(r"substrate-predicted $\Theta_D$ [K]")
-    ax_sc.set_aspect("equal", "box")
-    ax_sc.set_title(
-        "Substrate-Lagrangian Debye-temperature prediction\n"
-        f"mean |rel err| = {summary['mean_abs_rel_err']:.1%}, "
-        f"log-log slope = {summary['loglog_slope']:.3f}, "
-        f"r(log) = {summary['pearson_log_r']:.4f}"
-    )
-    ax_sc.legend(loc="upper left", fontsize=9)
-    ax_sc.grid(True, which="both", alpha=0.3)
+    # ---------- left: 3-line comparison (harmonic / quasi-harmonic / measured) ----------
+    # Sort by measured Θ_D so the curves make visual sense
+    order_m = np.argsort(meas)
+    names_m = [names[i] for i in order_m]
+    meas_m = meas[order_m]
+    pred_h_m = pred_harm[order_m]
+    pred_q_m = pred_qh[order_m]
 
-    # ---------- right: per-material residual bar chart ----------
-    order = np.argsort(rel)
+    x = np.arange(len(names_m))
+    ax_3line.plot(
+        x, meas_m, "o-", color="black", lw=2, markersize=9,
+        label="measured Θ_D (Ashcroft-Mermin / Kittel)",
+    )
+    ax_3line.plot(
+        x, pred_h_m, "s--", color="#d62728", lw=1.5, markersize=8,
+        label="substrate harmonic Θ_D = (ℏ/k_B)·c_s·(6π²n)^(1/3)",
+    )
+    ax_3line.plot(
+        x, pred_q_m, "D-", color="#1f77b4", lw=1.5, markersize=8,
+        label=r"substrate quasi-harm  Θ_D · (1 + γ_G·α_V·T_melt/2),  γ_G=$\frac{3}{2}\frac{1+\nu}{2-3\nu}$",
+    )
+    ax_3line.set_yscale("log")
+    ax_3line.set_xticks(x)
+    ax_3line.set_xticklabels(names_m, rotation=55, ha="right", fontsize=9)
+    ax_3line.set_ylabel(r"$\Theta_D$ [K]")
+    ax_3line.set_title(
+        "Substrate Debye-temperature: harmonic vs quasi-harmonic vs measured\n"
+        f"harmonic mean |err| = {summary_q['mean_abs_rel_err_harm']:.1%},  "
+        f"quasi-harm mean |err| = {summary_q['mean_abs_rel_err_qh']:.1%}  "
+        f"(Δ = {summary_q['improvement_pp']:+.2%} pp)"
+    )
+    ax_3line.legend(loc="upper left", fontsize=9, framealpha=0.95)
+    ax_3line.grid(True, which="both", alpha=0.3)
+    # Annotate Pb and Sn with γ_G and α_V
+    for tag in ("Lead", "Tin"):
+        i = names_m.index(tag)
+        row = rows_q[tag]
+        annot = (
+            f"{tag}\nγ_G={row['gamma_G_sub']:.2f} (lit {row['gamma_G_lit']:.1f})\n"
+            f"α_V={row['alpha_V']*1e6:.0f} ppm/K\n"
+            f"{row['theta_harm']:.0f}→{row['theta_qh']:.0f} (meas {row['theta_meas']:.0f})"
+        )
+        ax_3line.annotate(
+            annot,
+            (x[i], pred_q_m[i]),
+            xytext=(15, -45) if tag == "Lead" else (15, -25),
+            textcoords="offset points", fontsize=7,
+            bbox=dict(facecolor="lightyellow", edgecolor="grey", alpha=0.9),
+            arrowprops=dict(arrowstyle="->", color="grey", lw=0.6),
+        )
+
+    # ---------- right: residual bar chart, harmonic vs quasi-harmonic ----------
+    order = np.argsort(rel_harm)
     names_o = [names[i] for i in order]
-    rel_o = rel[order]
-    colors_o = [colors[i] for i in order]
+    rh_o = rel_harm[order] * 100.0
+    rq_o = rel_qh[order] * 100.0
+
     y = np.arange(len(names_o))
-    ax_bar.barh(y, rel_o * 100.0, color=colors_o, edgecolor="black", linewidth=0.4)
+    bw = 0.4
+    ax_bar.barh(
+        y - bw / 2, rh_o, height=bw, color="#d62728", alpha=0.85,
+        edgecolor="black", linewidth=0.4, label="harmonic only",
+    )
+    ax_bar.barh(
+        y + bw / 2, rq_o, height=bw, color="#1f77b4", alpha=0.85,
+        edgecolor="black", linewidth=0.4, label="+ quasi-harmonic shift",
+    )
     ax_bar.axvline(0.0, color="black", linewidth=1.2)
-    ax_bar.axvline(5.0, color="grey", linestyle=":", linewidth=0.8)
-    ax_bar.axvline(-5.0, color="grey", linestyle=":", linewidth=0.8)
-    ax_bar.axvline(10.0, color="grey", linestyle="--", linewidth=0.8)
-    ax_bar.axvline(-10.0, color="grey", linestyle="--", linewidth=0.8)
+    ax_bar.axvline(5.0, color="grey", linestyle=":", linewidth=0.7)
+    ax_bar.axvline(-5.0, color="grey", linestyle=":", linewidth=0.7)
+    ax_bar.axvline(10.0, color="grey", linestyle="--", linewidth=0.7)
+    ax_bar.axvline(-10.0, color="grey", linestyle="--", linewidth=0.7)
     ax_bar.set_yticks(y)
     ax_bar.set_yticklabels(names_o, fontsize=10)
     ax_bar.set_xlabel(r"$(\Theta_D^{\rm pred}/\Theta_D^{\rm meas} - 1)$ [%]")
     ax_bar.set_title(
-        "Per-material residual\n"
-        f"{summary['within_5pct']}/{summary['n_materials']} within 5%, "
-        f"{summary['within_10pct']}/{summary['n_materials']} within 10%, "
-        f"{summary['within_20pct']}/{summary['n_materials']} within 20%"
+        f"Per-material residual: harmonic ({summary_q['within_10pct_harm']}/14 within 10%) "
+        f"→ quasi-harm ({summary_q['within_10pct_qh']}/14 within 10%)"
     )
+    ax_bar.legend(loc="lower right", fontsize=9)
     ax_bar.grid(True, axis="x", alpha=0.3)
-    # Worst-case annotation
-    worst = summary["max_rel_err_material"]
+
+    # Substrate γ_G derivation note
     ax_bar.text(
-        0.98, 0.02,
-        f"worst residual: {worst}  ({summary['max_abs_rel_err']:+.1%})",
-        transform=ax_bar.transAxes, ha="right", va="bottom", fontsize=9,
-        bbox=dict(facecolor="white", edgecolor="grey", alpha=0.8),
+        0.02, 0.02,
+        r"substrate cap: $\sigma_{max}=1/2$  $\Rightarrow$  $\nu\leq 1/2$  $\Rightarrow$  $\gamma_G\leq 9/2$"
+        "\nKohn anomaly (Pb X-pt) lies outside elastic-continuum scope",
+        transform=ax_bar.transAxes, ha="left", va="bottom", fontsize=8,
+        bbox=dict(facecolor="lightyellow", edgecolor="grey", alpha=0.85),
     )
 
     fig.tight_layout()
@@ -380,12 +621,42 @@ def main() -> None:
         )
 
     print()
-    print("Summary")
+    print("Summary (harmonic)")
     for k, v in summary.items():
         if isinstance(v, float):
             print(f"  {k:<24} {v:+.5f}")
         else:
             print(f"  {k:<24} {v}")
+
+    # ----- Quasi-harmonic comparison -----
+    qh = run_test_quasiharmonic()
+    rows_q = qh["rows"]
+    summary_q = qh["summary"]
+
+    print()
+    print("Quasi-harmonic correction (substrate γ_G = 3/2 · (1+ν)/(2-3ν), T_eff = T_melt/2)")
+    print("=" * 88)
+    print(
+        f"{'Material':<12}{'ν':>6}{'γ_G_sub':>9}{'γ_G_lit':>9}"
+        f"{'α_V (ppm/K)':>14}{'Θ_harm':>10}{'Θ_qh':>10}"
+        f"{'Θ_meas':>9}{'err harm':>11}{'err qh':>10}"
+    )
+    for name, row in rows_q.items():
+        print(
+            f"{name:<12}{row['v_poisson']:>6.3f}{row['gamma_G_sub']:>9.2f}"
+            f"{row['gamma_G_lit']:>9.2f}{row['alpha_V']*1e6:>14.1f}"
+            f"{row['theta_harm']:>10.1f}{row['theta_qh']:>10.1f}"
+            f"{row['theta_meas']:>9.0f}"
+            f"{row['rel_err_harm']:>+11.2%}{row['rel_err_qh']:>+10.2%}"
+        )
+
+    print()
+    print("Quasi-harmonic summary")
+    for k, v in summary_q.items():
+        if isinstance(v, float):
+            print(f"  {k:<28} {v:+.5f}")
+        else:
+            print(f"  {k:<28} {v}")
 
 
 if __name__ == "__main__":

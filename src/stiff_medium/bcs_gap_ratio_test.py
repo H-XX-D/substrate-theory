@@ -15,6 +15,32 @@ This module compares that prediction against tabulated literature
 values of (T_c, 2Δ(0)) for ten elemental and one multiband
 superconductor.
 
+Strong-coupling (Allen--Dynes) extension
+----------------------------------------
+For materials where lambda * (T_c / omega_log)^2 is non-negligible the
+substrate / weak-coupling line is corrected by the Allen--Dynes
+strong-coupling envelope (Allen & Dynes 1975; Carbotte 1990 review):
+
+    2 Delta(0) / (k_B T_c)
+        ~ (2 pi / e^gamma) * [ 1 + 12.5 * (T_c / omega_log)^2
+                                       * ln(omega_log / (2 T_c)) ]
+
+where omega_log is the logarithmic average of the phonon spectrum
+alpha^2 F(omega) (in K).  The substrate ontology accommodates this
+correction WITHOUT adding new parameters: lambda and omega_log are
+material-specific phonon-spectrum inputs, the same inputs Eliashberg
+theory takes (and the same inputs the substrate framework would have
+to take to specify which medium-mode spectrum is being unbound).
+The correction does NOT change the substrate-derived universal ratio
+2 pi / e^gamma -- it adds the leading T_c/omega_log expansion term that
+both Eliashberg and substrate strong-coupling treatments produce.
+
+For multiband superconductors (MgB_2) the single-band Allen--Dynes form
+fails: each band has its own gap and its own coupling.  The module
+provides a separate ``mgb2_multiband_prediction`` that handles the
+sigma- and pi-channel gaps independently, with an optional DOS-weighted
+composite gap for visual comparison.
+
 Materials
 ---------
 The reference table here is independently sourced (Tinkham, Carbotte,
@@ -46,12 +72,19 @@ API
 ``BCS_RATIO_PRED``             : float, 2π/e^γ.
 ``measured_ratio(T_c, gap)``   : compute R_meas from K and meV.
 ``deviation_percent(R)``       : (R - R_pred) / R_pred * 100.
+``predict_with_allen_dynes(lam, omega_log_K, T_c_K)``
+                               : strong-coupling-corrected gap ratio.
+``MATERIAL_PHONON_PARAMS``     : dict of (lambda, omega_log_K) per material
+                                 from McMillan / Allen-Dynes literature.
+``mgb2_multiband_prediction()``: per-band MgB_2 sigma/pi ratios + DOS-
+                                 weighted composite.
 ``run_test()``                 : returns a list of ``ResultRow`` with
                                  (name, T_c, gap_meV, R_meas, dev_pct,
-                                 within_5pct).
-``summary_stats(rows)``        : mean / max / min |dev|, n_within_5pct.
+                                 dev_pct_ad, within_5pct).
+``summary_stats(rows)``        : mean / max / min |dev|, n_within_5pct
+                                 (bare AND Allen-Dynes-corrected).
 ``render_bcs_gap_ratio_test()``: matplotlib bar-chart figure for the
-                                 visuals/120 PNG.
+                                 visuals/120 PNG (bare BCS / AD / measured).
 """
 
 from __future__ import annotations
@@ -156,20 +189,215 @@ def deviation_percent(R_meas: float, R_pred: float = BCS_RATIO_PRED) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Allen-Dynes strong-coupling correction
+# ---------------------------------------------------------------------------
+#
+# Allen & Dynes 1975, Phys. Rev. B 12, 905; Carbotte 1990, Rev. Mod. Phys.
+# 62, 1027 (table I, equation 2.27).  The leading correction beyond the
+# universal weak-coupling ratio is
+#
+#     2 Delta(0) / (k_B T_c) = (2 pi / e^gamma)
+#         * [ 1 + 12.5 * (T_c / omega_log)^2 * ln(omega_log / (2 T_c)) ]
+#
+# valid for T_c << omega_log.  For T_c approaching omega_log the
+# correction grows large and the truncated series is no longer a good
+# approximation; callers are expected to use it only where the sign of
+# the bracket is positive (i.e. omega_log > 2 T_c).
+
+ALLEN_DYNES_PREFACTOR: float = 12.5
+
+
+def predict_with_allen_dynes(
+    lam:         float,
+    omega_log_K: float,
+    T_c_K:       float,
+    R_pred_weak: float = BCS_RATIO_PRED,
+) -> float:
+    """Strong-coupling-corrected gap ratio per Allen--Dynes.
+
+    Parameters
+    ----------
+    lam
+        Electron-phonon coupling strength (mass enhancement parameter
+        lambda).  Listed here for API completeness and future extension
+        but does NOT enter the leading T_c/omega_log correction term;
+        the lambda dependence is folded into T_c itself via McMillan /
+        Allen-Dynes T_c formula.  Higher-order corrections in lambda
+        (mu* renormalisation, strong-coupling shape factors) are NOT
+        included in the leading-term form used here.
+    omega_log_K
+        Phonon log-average frequency in K (= hbar omega_log / k_B).
+        Tabulated values come from McMillan 1968 and Allen--Dynes 1975
+        re-fits of measured tunnelling alpha^2 F(omega) spectra.
+    T_c_K
+        Critical temperature in K.
+    R_pred_weak
+        Weak-coupling baseline (default = substrate / BCS = 2 pi/e^gamma).
+
+    Returns
+    -------
+    float
+        Predicted 2 Delta(0) / (k_B T_c).  Returns ``R_pred_weak``
+        unchanged if omega_log <= 2 T_c (the leading-term correction
+        breaks down outside that regime; signal that AD truncation is
+        not applicable rather than report a negative correction).
+    """
+    if T_c_K <= 0.0:
+        raise ValueError(f"T_c must be > 0, got {T_c_K!r}")
+    if omega_log_K <= 0.0:
+        raise ValueError(f"omega_log must be > 0, got {omega_log_K!r}")
+    if lam < 0.0:
+        raise ValueError(f"lambda must be >= 0, got {lam!r}")
+    if omega_log_K <= 2.0 * T_c_K:
+        # Leading-order Allen-Dynes is not valid here; do not extrapolate.
+        return float(R_pred_weak)
+    correction = (
+        ALLEN_DYNES_PREFACTOR
+        * (T_c_K / omega_log_K) ** 2
+        * math.log(omega_log_K / (2.0 * T_c_K))
+    )
+    return float(R_pred_weak * (1.0 + correction))
+
+
+# Material-specific phonon parameters from McMillan 1968 / Allen-Dynes 1975
+# tabulations (Carbotte 1990 review, table I) and Choi et al. 2002 for MgB_2.
+#
+#     name : (lambda, omega_log [K])
+#
+# These are EMPIRICAL inputs to the strong-coupling correction; they are
+# not derived from substrate axioms.  The substrate framework predicts
+# the universal weak-coupling line 2 pi / e^gamma; the Allen-Dynes
+# correction pulls in the same external phonon-spectrum data that
+# Eliashberg theory takes.
+
+MATERIAL_PHONON_PARAMS: dict = {
+    # name: (lambda, omega_log_K)  -- Allen-Dynes / Carbotte literature
+    "Hg":   (1.62,  72.0),
+    "Pb":   (1.55,  56.0),
+    "Sn":   (0.72, 152.0),
+    "Al":   (0.43, 305.0),
+    "Nb":   (0.82, 130.0),
+    "V":    (0.63, 217.0),
+    "Ta":   (0.69, 159.0),
+    "In":   (0.81, 100.0),
+    "Tl":   (0.71,  72.0),
+    # MgB_2 dominant sigma channel (Choi et al. 2002, Nature 418, 758).
+    # The single-band Allen-Dynes form is intentionally a poor fit here;
+    # ``mgb2_multiband_prediction`` provides the per-band breakdown.
+    "MgB2": (0.96, 778.0),
+}
+
+
+# ---------------------------------------------------------------------------
+# Multiband module: MgB_2 sigma + pi
+# ---------------------------------------------------------------------------
+#
+# MgB_2 is the canonical two-band superconductor.  The sigma band hosts
+# the dominant gap (Delta_sigma ~ 7 meV, full gap 2 Delta_sigma ~ 14 meV)
+# and a moderate coupling (lambda_sigma ~ 1.0); the pi band hosts a
+# secondary gap (Delta_pi ~ 2 meV, 2 Delta_pi ~ 4 meV) with weak
+# coupling (lambda_pi ~ 0.4).  Choi et al. 2002 (Nature 418, 758)
+# reports per-band gap ratios 2 Delta_sigma / k_B T_c ~ 4.0 and
+# 2 Delta_pi / k_B T_c ~ 1.2 from two-band Eliashberg.  The single-band
+# universal ratio simply does not apply to either band individually.
+
+@dataclass(frozen=True)
+class MgB2Bands:
+    """Per-band parameters for the MgB_2 two-gap fit."""
+    Tc_K:           float = 39.0
+    Delta_sigma_meV: float = 7.0    # half-gap on sigma band (Choi 2002)
+    Delta_pi_meV:    float = 2.0    # half-gap on pi band   (Choi 2002)
+    w_sigma:         float = 0.55   # DOS-weighted sigma fraction
+    lambda_sigma:    float = 0.96
+    omega_log_sigma_K: float = 778.0
+    lambda_pi:       float = 0.42
+    omega_log_pi_K:  float = 696.0
+
+
+def mgb2_multiband_prediction(bands: MgB2Bands = MgB2Bands()) -> dict:
+    """Per-band gap-ratio breakdown for MgB_2.
+
+    Returns a dict with:
+        R_sigma            : 2 Delta_sigma / (k_B T_c)
+        R_pi               : 2 Delta_pi    / (k_B T_c)
+        R_composite        : (w_sigma * 2 Delta_sigma + w_pi * 2 Delta_pi)
+                              / (k_B T_c)
+        R_weighted_substrate
+                          : same as R_composite but expressed as the
+                            DOS-weighted average of the two band ratios
+                            (algebraically identical for fixed T_c).
+        R_pred_weak        : substrate / BCS weak-coupling line (3.528)
+        R_pred_dominant_AD : Allen-Dynes correction applied to dominant
+                              sigma band (with sigma lambda, omega_log)
+        dev_composite_pct  : composite vs measured (using full sigma 2D=14)
+        Choi_R_sigma_ref   : 4.0 (Choi et al. 2002 Eliashberg result)
+        Choi_R_pi_ref      : 1.2 (Choi et al. 2002 Eliashberg result)
+    """
+    twoD_sigma = 2.0 * bands.Delta_sigma_meV
+    twoD_pi    = 2.0 * bands.Delta_pi_meV
+    R_sigma = measured_ratio(bands.Tc_K, twoD_sigma)
+    R_pi    = measured_ratio(bands.Tc_K, twoD_pi)
+    avg_gap = bands.w_sigma * twoD_sigma + (1.0 - bands.w_sigma) * twoD_pi
+    R_composite = measured_ratio(bands.Tc_K, avg_gap)
+    R_pred_dominant = predict_with_allen_dynes(
+        bands.lambda_sigma, bands.omega_log_sigma_K, bands.Tc_K
+    )
+    return {
+        "R_sigma":            R_sigma,
+        "R_pi":               R_pi,
+        "R_composite":        R_composite,
+        "R_weighted_substrate":
+            bands.w_sigma * R_sigma + (1.0 - bands.w_sigma) * R_pi,
+        "R_pred_weak":        BCS_RATIO_PRED,
+        "R_pred_dominant_AD": R_pred_dominant,
+        "dev_sigma_pct":      deviation_percent(R_sigma, R_pred_dominant),
+        "dev_composite_pct":  deviation_percent(R_composite, BCS_RATIO_PRED),
+        "Choi_R_sigma_ref":   4.0,
+        "Choi_R_pi_ref":      1.2,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Test driver
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class ResultRow:
-    """Per-material BCS gap ratio test result."""
+    """Per-material BCS gap ratio test result.
+
+    Attributes
+    ----------
+    name, T_c_K, gap_meV, klass, note
+        Pass-through from ``MaterialDatum``.
+    R_meas
+        Measured 2 Delta(0) / (k_B T_c).
+    R_pred
+        Bare substrate / BCS weak-coupling prediction (3.528).
+    R_pred_ad
+        Allen--Dynes-corrected prediction using literature
+        (lambda, omega_log) for this material.  Equals ``R_pred``
+        when no phonon parameters are available or the AD correction
+        is out of its validity range.
+    dev_pct
+        Deviation of R_meas from bare R_pred, in percent.
+    dev_pct_ad
+        Deviation of R_meas from Allen-Dynes-corrected R_pred_ad.
+    within_5pct
+        ``abs(dev_pct) <= threshold_pct`` (BARE).
+    within_5pct_ad
+        ``abs(dev_pct_ad) <= threshold_pct`` (Allen-Dynes-corrected).
+    """
     name:           str
     T_c_K:          float
     gap_meV:        float
     klass:          str
     R_meas:         float
     R_pred:         float
+    R_pred_ad:      float
     dev_pct:        float
+    dev_pct_ad:     float
     within_5pct:    bool
+    within_5pct_ad: bool
     note:           str
 
 
@@ -177,15 +405,29 @@ def run_test(
     materials: Iterable[MaterialDatum] = MATERIALS,
     R_pred:    float = BCS_RATIO_PRED,
     threshold_pct: float = 5.0,
+    phonon_params: dict = MATERIAL_PHONON_PARAMS,
 ) -> List[ResultRow]:
-    """Compute R_meas, deviation, and pass/fail at ``threshold_pct``.
+    """Compute R_meas, bare and Allen-Dynes-corrected deviations,
+    and pass/fail at ``threshold_pct``.
 
     Returns one ``ResultRow`` per input material.  Order is preserved.
+
+    For multiband materials (klass == "multiband") the Allen-Dynes
+    correction is applied to the DOMINANT band (e.g. MgB_2 sigma) using
+    the listed (lambda, omega_log).  The single-band AD line is known
+    to underestimate the multiband gap ratio; see
+    ``mgb2_multiband_prediction`` for the per-band breakdown.
     """
     rows: List[ResultRow] = []
     for m in materials:
         R = measured_ratio(m.T_c_K, m.gap_meV)
         d = deviation_percent(R, R_pred)
+        if m.name in phonon_params:
+            lam, wlog = phonon_params[m.name]
+            R_pred_ad = predict_with_allen_dynes(lam, wlog, m.T_c_K, R_pred)
+        else:
+            R_pred_ad = R_pred
+        d_ad = deviation_percent(R, R_pred_ad)
         rows.append(ResultRow(
             name=m.name,
             T_c_K=m.T_c_K,
@@ -193,8 +435,11 @@ def run_test(
             klass=m.klass,
             R_meas=R,
             R_pred=R_pred,
+            R_pred_ad=R_pred_ad,
             dev_pct=d,
+            dev_pct_ad=d_ad,
             within_5pct=abs(d) <= threshold_pct,
+            within_5pct_ad=abs(d_ad) <= threshold_pct,
             note=m.note,
         ))
     return rows
@@ -204,32 +449,48 @@ def summary_stats(rows: List[ResultRow]) -> dict:
     """Aggregate statistics across a result set.
 
     Returns a dict with:
-        n             : number of materials
-        n_within_5pct : count of |deviation| <= 5 %
-        mean_abs_dev  : mean |deviation| in percent
-        max_abs_dev   : max  |deviation| in percent
-        min_abs_dev   : min  |deviation| in percent
-        elemental_only: same five fields but restricted to klass=="elemental"
+        n                 : number of materials
+        n_within_5pct     : count of |deviation| <= 5 % (BARE)
+        n_within_5pct_ad  : count of |deviation| <= 5 % (Allen-Dynes-corrected)
+        mean_abs_dev      : mean |deviation| in percent (BARE)
+        mean_abs_dev_ad   : mean |deviation| (Allen-Dynes-corrected)
+        max_abs_dev       : max  |deviation| (BARE)
+        max_abs_dev_ad    : max  |deviation| (Allen-Dynes-corrected)
+        min_abs_dev       : min  |deviation| (BARE)
+        min_abs_dev_ad    : min  |deviation| (Allen-Dynes-corrected)
+        elemental_only    : restricted to klass=="elemental" (BARE + AD)
     """
     if not rows:
         raise ValueError("empty rows")
-    abs_devs = np.array([abs(r.dev_pct) for r in rows], dtype=float)
-    n_pass   = int(sum(1 for r in rows if r.within_5pct))
-    elem     = [r for r in rows if r.klass == "elemental"]
-    elem_abs = np.array([abs(r.dev_pct) for r in elem], dtype=float)
-    elem_pass = int(sum(1 for r in elem if r.within_5pct))
+    abs_devs    = np.array([abs(r.dev_pct)    for r in rows], dtype=float)
+    abs_devs_ad = np.array([abs(r.dev_pct_ad) for r in rows], dtype=float)
+    n_pass      = int(sum(1 for r in rows if r.within_5pct))
+    n_pass_ad   = int(sum(1 for r in rows if r.within_5pct_ad))
+    elem        = [r for r in rows if r.klass == "elemental"]
+    elem_abs    = np.array([abs(r.dev_pct)    for r in elem], dtype=float)
+    elem_abs_ad = np.array([abs(r.dev_pct_ad) for r in elem], dtype=float)
+    elem_pass    = int(sum(1 for r in elem if r.within_5pct))
+    elem_pass_ad = int(sum(1 for r in elem if r.within_5pct_ad))
     return {
-        "n":             len(rows),
-        "n_within_5pct": n_pass,
-        "mean_abs_dev":  float(abs_devs.mean()),
-        "max_abs_dev":   float(abs_devs.max()),
-        "min_abs_dev":   float(abs_devs.min()),
+        "n":                len(rows),
+        "n_within_5pct":    n_pass,
+        "n_within_5pct_ad": n_pass_ad,
+        "mean_abs_dev":     float(abs_devs.mean()),
+        "mean_abs_dev_ad":  float(abs_devs_ad.mean()),
+        "max_abs_dev":      float(abs_devs.max()),
+        "max_abs_dev_ad":   float(abs_devs_ad.max()),
+        "min_abs_dev":      float(abs_devs.min()),
+        "min_abs_dev_ad":   float(abs_devs_ad.min()),
         "elemental_only": {
-            "n":             len(elem),
-            "n_within_5pct": elem_pass,
-            "mean_abs_dev":  float(elem_abs.mean()) if len(elem) else 0.0,
-            "max_abs_dev":   float(elem_abs.max())  if len(elem) else 0.0,
-            "min_abs_dev":   float(elem_abs.min())  if len(elem) else 0.0,
+            "n":                len(elem),
+            "n_within_5pct":    elem_pass,
+            "n_within_5pct_ad": elem_pass_ad,
+            "mean_abs_dev":     float(elem_abs.mean())    if len(elem) else 0.0,
+            "mean_abs_dev_ad":  float(elem_abs_ad.mean()) if len(elem) else 0.0,
+            "max_abs_dev":      float(elem_abs.max())     if len(elem) else 0.0,
+            "max_abs_dev_ad":   float(elem_abs_ad.max())  if len(elem) else 0.0,
+            "min_abs_dev":      float(elem_abs.min())     if len(elem) else 0.0,
+            "min_abs_dev_ad":   float(elem_abs_ad.min())  if len(elem) else 0.0,
         },
     }
 
@@ -239,9 +500,12 @@ def summary_stats(rows: List[ResultRow]) -> dict:
 # ---------------------------------------------------------------------------
 
 def render_bcs_gap_ratio_test(out_path: str) -> str:
-    """Render a bar chart of measured 2Δ/(k_B T_c) per material vs the
-    substrate prediction 2π/e^γ ≃ 3.528.  Saves PNG to ``out_path`` and
-    returns the path.
+    """Render a 3-series bar chart per material: bare BCS prediction,
+    Allen-Dynes-corrected prediction, and measured 2Delta/(k_B T_c).
+
+    The bottom panel shows percent deviation (bare vs AD) so the user can
+    see at a glance which materials the strong-coupling correction
+    rescues.  Saves PNG to ``out_path`` and returns the path.
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -249,75 +513,99 @@ def render_bcs_gap_ratio_test(out_path: str) -> str:
 
     rows = run_test()
     names    = [r.name        for r in rows]
-    R_vals   = [r.R_meas      for r in rows]
+    R_meas   = [r.R_meas      for r in rows]
+    R_pred   = [r.R_pred      for r in rows]   # bare 3.528
+    R_pred_ad= [r.R_pred_ad   for r in rows]
     devs     = [r.dev_pct     for r in rows]
+    devs_ad  = [r.dev_pct_ad  for r in rows]
     klasses  = [r.klass       for r in rows]
 
-    color_for = {
-        "elemental":  "#1f77b4",  # tab:blue
-        "multiband":  "#9467bd",  # tab:purple
-    }
-    bar_colors = [color_for.get(k, "gray") for k in klasses]
+    color_meas = "#1f77b4"  # tab:blue
+    color_bare = "#7f7f7f"  # gray
+    color_ad   = "#d62728"  # tab:red
+    color_mb   = "#9467bd"  # tab:purple, multiband annotation
+    edge_for_class = {"elemental": "black", "multiband": color_mb}
 
     fig, (ax1, ax2) = plt.subplots(
-        nrows=2, ncols=1, figsize=(11.0, 8.5),
-        gridspec_kw=dict(height_ratios=[3, 2], hspace=0.35),
+        nrows=2, ncols=1, figsize=(13.0, 9.0),
+        gridspec_kw=dict(height_ratios=[3, 2], hspace=0.40),
     )
 
-    # ---- top: measured ratio per material vs prediction line --------
-    bars = ax1.bar(names, R_vals, color=bar_colors, edgecolor="black",
-                   linewidth=0.8)
-    ax1.axhline(BCS_RATIO_PRED, color="crimson", linestyle="--",
-                linewidth=1.8,
-                label=f"Substrate / BCS prediction $2\\pi/e^\\gamma$ "
-                      f"= {BCS_RATIO_PRED:.3f}")
-    # +-5% guide bands
-    ax1.axhspan(BCS_RATIO_PRED * 0.95, BCS_RATIO_PRED * 1.05,
-                color="crimson", alpha=0.10, label="+/- 5 % band")
+    # ---- top: 3-series grouped bar chart per material ---------------
+    n = len(names)
+    x = np.arange(n)
+    bw = 0.27
+
+    bars_bare = ax1.bar(
+        x - bw, R_pred, width=bw, color=color_bare, edgecolor="black",
+        linewidth=0.6, label=r"bare BCS  $2\pi/e^\gamma=3.528$",
+    )
+    bars_ad = ax1.bar(
+        x,      R_pred_ad, width=bw, color=color_ad,   edgecolor="black",
+        linewidth=0.6, label="substrate + Allen-Dynes",
+    )
+    bars_meas = ax1.bar(
+        x + bw, R_meas,    width=bw, color=color_meas, edgecolor="black",
+        linewidth=0.6, label="measured",
+    )
+    # outline multiband-class bars in purple to flag MgB_2
+    for k, b in zip(klasses, bars_meas):
+        if k == "multiband":
+            b.set_edgecolor(color_mb)
+            b.set_linewidth(2.0)
+
+    ax1.axhline(BCS_RATIO_PRED, color=color_bare, linestyle="--",
+                linewidth=1.0, alpha=0.8)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(names)
     ax1.set_ylabel(r"$2\Delta(0) / (k_B T_c)$  (dimensionless)",
                    fontsize=11)
-    ax1.set_title("BCS universal gap ratio: substrate prediction vs "
-                  "measured superconductors",
+    ax1.set_title("BCS gap ratio: bare substrate / BCS  vs  "
+                  "Allen-Dynes-corrected  vs  measured",
                   fontsize=12)
-    # Tighten the y-axis around the data band so deviations are visible
-    # but leave headroom so bar labels and legend don't collide.
-    ax1.set_ylim(0.0, 6.2)
+    ax1.set_ylim(0.0, 5.2)
     ax1.grid(axis="y", alpha=0.3)
-    # numeric labels on bars (placed above the bar top)
-    for bar, r in zip(bars, rows):
-        ax1.text(bar.get_x() + bar.get_width() / 2.0,
-                 bar.get_height() + 0.05,
+    # numeric labels above measured bars
+    for b, r in zip(bars_meas, rows):
+        ax1.text(b.get_x() + b.get_width() / 2.0,
+                 b.get_height() + 0.05,
                  f"{r.R_meas:.2f}",
-                 ha="center", va="bottom", fontsize=8)
+                 ha="center", va="bottom", fontsize=7.5)
+    ax1.legend(loc="upper left", fontsize=9, framealpha=0.95, ncol=3)
 
-    # legend swatches for class -- placed at upper left, above the
-    # 6.2 axis ceiling and above all bar heights.
-    from matplotlib.patches import Patch
-    handles, _ = ax1.get_legend_handles_labels()
-    handles.extend([
-        Patch(color=color_for["elemental"], label="elemental"),
-        Patch(color=color_for["multiband"], label="multiband"),
-    ])
-    ax1.legend(handles=handles, loc="upper left", fontsize=9,
-               framealpha=0.95, ncol=2)
-
-    # ---- bottom: percent deviation ---------------------------------
-    bars2 = ax2.bar(names, devs, color=bar_colors, edgecolor="black",
-                    linewidth=0.8)
+    # ---- bottom: percent deviation (bare vs AD) --------------------
+    bars2_bare = ax2.bar(
+        x - bw / 2.0, devs, width=bw, color=color_bare,
+        edgecolor="black", linewidth=0.6, label="bare BCS deviation",
+    )
+    bars2_ad = ax2.bar(
+        x + bw / 2.0, devs_ad, width=bw, color=color_ad,
+        edgecolor="black", linewidth=0.6, label="Allen-Dynes deviation",
+    )
     ax2.axhline(0.0, color="black", linewidth=0.8)
-    ax2.axhspan(-5.0, 5.0, color="crimson", alpha=0.10,
-                label="+/- 5 % match band")
+    ax2.axhspan(-5.0, 5.0, color="crimson", alpha=0.08,
+                label=r"$\pm 5\%$ match band")
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(names)
     ax2.set_ylabel("deviation from\nprediction (%)", fontsize=11)
     ax2.grid(axis="y", alpha=0.3)
-    ax2.legend(loc="lower left", fontsize=9)
-    for bar, r in zip(bars2, rows):
-        y = bar.get_height()
+    ax2.legend(loc="lower left", fontsize=9, ncol=3)
+    for b, r in zip(bars2_bare, rows):
+        y = b.get_height()
         offset = 0.6 if y >= 0 else -1.4
-        ax2.text(bar.get_x() + bar.get_width() / 2.0,
+        ax2.text(b.get_x() + b.get_width() / 2.0,
                  y + offset,
-                 f"{r.dev_pct:+.1f}%",
+                 f"{r.dev_pct:+.0f}",
                  ha="center", va="bottom" if y >= 0 else "top",
-                 fontsize=8)
+                 fontsize=7)
+    for b, r in zip(bars2_ad, rows):
+        y = b.get_height()
+        offset = 0.6 if y >= 0 else -1.4
+        ax2.text(b.get_x() + b.get_width() / 2.0,
+                 y + offset,
+                 f"{r.dev_pct_ad:+.0f}",
+                 ha="center", va="bottom" if y >= 0 else "top",
+                 fontsize=7)
 
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
@@ -329,14 +617,18 @@ def render_bcs_gap_ratio_test(out_path: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _print_table(rows: List[ResultRow]) -> None:
-    print(f"\nBCS gap ratio test: substrate prediction = {BCS_RATIO_PRED:.6f}")
-    print(f"({'name':<6}  {'T_c[K]':>7}  {'2D[meV]':>8}  "
-          f"{'R_meas':>7}  {'dev[%]':>8}  {'<=5%':>6}  class")
+    print(f"\nBCS gap ratio test: substrate prediction (bare) = "
+          f"{BCS_RATIO_PRED:.6f}")
+    print(f" {'name':<6}  {'T_c[K]':>7}  {'2D[meV]':>8}  "
+          f"{'R_meas':>7}  {'R_AD':>6}  {'dev_b':>7}  {'dev_AD':>7}  "
+          f"{'<=5%bare':>9}  {'<=5%AD':>7}  class")
     for r in rows:
-        flag = "Y" if r.within_5pct else " "
+        flag_b  = "Y" if r.within_5pct    else " "
+        flag_ad = "Y" if r.within_5pct_ad else " "
         print(f" {r.name:<6}  {r.T_c_K:>7.2f}  {r.gap_meV:>8.3f}  "
-              f"{r.R_meas:>7.3f}  {r.dev_pct:>+8.2f}  {flag:>6}  "
-              f"{r.klass}")
+              f"{r.R_meas:>7.3f}  {r.R_pred_ad:>6.3f}  "
+              f"{r.dev_pct:>+7.2f}  {r.dev_pct_ad:>+7.2f}  "
+              f"{flag_b:>9}  {flag_ad:>7}  {r.klass}")
 
 
 def main() -> None:
@@ -344,26 +636,48 @@ def main() -> None:
     _print_table(rows)
     stats = summary_stats(rows)
     print("\nAggregate (all materials):")
-    print(f"  n={stats['n']}, n_within_5pct={stats['n_within_5pct']}, "
-          f"mean|dev|={stats['mean_abs_dev']:.2f}%, "
-          f"max|dev|={stats['max_abs_dev']:.2f}%")
+    print(f"  n={stats['n']}, "
+          f"bare n_within_5pct={stats['n_within_5pct']}, "
+          f"AD   n_within_5pct={stats['n_within_5pct_ad']}")
+    print(f"  bare mean|dev|={stats['mean_abs_dev']:.2f}%  max|dev|="
+          f"{stats['max_abs_dev']:.2f}%")
+    print(f"  AD   mean|dev|={stats['mean_abs_dev_ad']:.2f}%  max|dev|="
+          f"{stats['max_abs_dev_ad']:.2f}%")
     elem = stats["elemental_only"]
     print("Aggregate (elemental only):")
-    print(f"  n={elem['n']}, n_within_5pct={elem['n_within_5pct']}, "
-          f"mean|dev|={elem['mean_abs_dev']:.2f}%, "
-          f"max|dev|={elem['max_abs_dev']:.2f}%")
+    print(f"  n={elem['n']}, "
+          f"bare n_within_5pct={elem['n_within_5pct']}, "
+          f"AD   n_within_5pct={elem['n_within_5pct_ad']}")
+    print(f"  bare mean|dev|={elem['mean_abs_dev']:.2f}%  max|dev|="
+          f"{elem['max_abs_dev']:.2f}%")
+    print(f"  AD   mean|dev|={elem['mean_abs_dev_ad']:.2f}%  max|dev|="
+          f"{elem['max_abs_dev_ad']:.2f}%")
+    # MgB_2 multiband breakdown
+    mb = mgb2_multiband_prediction()
+    print("\nMgB_2 multiband (per-band):")
+    print(f"  R_sigma     = {mb['R_sigma']:.3f}  (Choi 2002 Eliashberg "
+          f"~ {mb['Choi_R_sigma_ref']:.2f})")
+    print(f"  R_pi        = {mb['R_pi']:.3f}  (Choi 2002 Eliashberg "
+          f"~ {mb['Choi_R_pi_ref']:.2f})")
+    print(f"  R_composite = {mb['R_composite']:.3f}  "
+          f"(DOS-weighted full gap)")
 
 
 __all__ = [
+    "ALLEN_DYNES_PREFACTOR",
     "BCS_RATIO_PRED",
     "EULER_GAMMA",
     "K_B_MEV_K",
     "MATERIALS",
+    "MATERIAL_PHONON_PARAMS",
     "MaterialDatum",
+    "MgB2Bands",
     "ResultRow",
     "deviation_percent",
     "main",
     "measured_ratio",
+    "mgb2_multiband_prediction",
+    "predict_with_allen_dynes",
     "render_bcs_gap_ratio_test",
     "run_test",
     "summary_stats",

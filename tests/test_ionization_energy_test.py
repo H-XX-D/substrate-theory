@@ -5,14 +5,20 @@ from __future__ import annotations
 import pytest
 
 from src.stiff_medium.atom_substrate import RYDBERG_EV
+from src.stiff_medium.b3_constants import K_rank
 from src.stiff_medium.ionization_energy_test import (
     ELEMENT_SYMBOLS,
     GROUP_LABEL,
+    HF_ORBITAL_HARTREE,
     MEASURED_IE_EV,
+    SIGMA_PP,
+    SIGMA_SP,
     Z_EFF_CALIBRATED_EXTENDED,
     build_rows,
     group_breakdown,
+    k_rank_zeff_for_least_bound,
     predict_ionization_energy,
+    predict_substrate_HF,
     run_test,
     slater_zeff_for_least_bound,
 )
@@ -136,6 +142,10 @@ def test_run_test_summary_keys():
         "n_elements",
         "slater_mean_pct",
         "slater_max_pct",
+        "krank_mean_pct",
+        "krank_max_pct",
+        "substrate_HF_mean_pct",
+        "substrate_HF_max_pct",
         "calibrated_mean_pct",
         "calibrated_max_pct",
     }
@@ -144,6 +154,17 @@ def test_run_test_summary_keys():
     assert res["summary"]["calibrated_mean_pct"] < 0.01   # type: ignore[index,operator]
     # Slater mean error is large (sentinel: > 100%)
     assert res["summary"]["slater_mean_pct"] > 100.0      # type: ignore[index,operator]
+    # K_rank substrate refinement -- order-of-magnitude better than Slater,
+    # well below 30%, but not below 5% (no per-element knobs)
+    assert res["summary"]["krank_mean_pct"] < 30.0        # type: ignore[index,operator]
+    assert res["summary"]["krank_mean_pct"] < res["summary"]["slater_mean_pct"] / 10.0   # type: ignore[index]
+    # Substrate-HF Koopmans -- mean below 10% (zero-element-knob HF)
+    assert res["summary"]["substrate_HF_mean_pct"] < 10.0       # type: ignore[index,operator]
+    # Substrate-HF beats K_rank substantially
+    assert (
+        res["summary"]["substrate_HF_mean_pct"]                                # type: ignore[index]
+        < res["summary"]["krank_mean_pct"] / 2.0                               # type: ignore[index]
+    )
 
 
 def test_group_breakdown_categories():
@@ -168,9 +189,9 @@ def test_best_group_slater_is_row2_s():
 # Sanity: predicted IE always positive, n_least matches Aufbau                #
 # --------------------------------------------------------------------------- #
 
-def test_predicted_ies_positive_in_both_modes():
+def test_predicted_ies_positive_in_all_modes():
     for Z in range(1, 19):
-        for mode in ("slater", "calibrated"):
+        for mode in ("slater", "krank", "substrate_HF", "calibrated"):
             _, ie = predict_ionization_energy(Z, mode)
             assert ie > 0.0, f"Z={Z}, mode={mode}: IE = {ie}"
 
@@ -178,3 +199,126 @@ def test_predicted_ies_positive_in_both_modes():
 def test_predict_unknown_mode_raises():
     with pytest.raises(ValueError):
         predict_ionization_energy(1, mode="bogus")
+
+
+# --------------------------------------------------------------------------- #
+# K_rank substrate refinement: substrate-derived intra-shell screening        #
+# --------------------------------------------------------------------------- #
+
+def test_sigma_constants_derived_from_K_rank():
+    """sigma_pp and sigma_sp are forced by canonical K_rank=5 4-simplex."""
+    assert SIGMA_PP == pytest.approx(1.0 - 1.0 / K_rank)
+    assert SIGMA_PP == pytest.approx(4.0 / 5.0)
+    assert SIGMA_SP == pytest.approx(1.0 - 1.0 / (K_rank * K_rank))
+    assert SIGMA_SP == pytest.approx(24.0 / 25.0)
+    # K_rank=5 confirmed by canonical b3_constants
+    assert K_rank == 5
+
+
+def test_krank_hydrogen_exact():
+    """H still has Z_eff = 1, so K_rank refinement is trivially exact."""
+    z, ie = predict_ionization_energy(1, "krank")
+    assert z == pytest.approx(1.0)
+    assert ie == pytest.approx(RYDBERG_EV, rel=1e-12)
+
+
+def test_krank_p_shell_outperforms_slater():
+    """For every 2p / 3p element, K_rank screening beats Slater by >5x."""
+    p_shell = [5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 17, 18]
+    for Z in p_shell:
+        _, ie_sl = predict_ionization_energy(Z, "slater")
+        _, ie_kr = predict_ionization_energy(Z, "krank")
+        meas = MEASURED_IE_EV[Z]
+        err_sl = 100.0 * abs(ie_sl - meas) / meas
+        err_kr = 100.0 * abs(ie_kr - meas) / meas
+        assert err_kr * 5.0 < err_sl, (
+            f"Z={Z}: Slater {err_sl:.1f}%, K_rank {err_kr:.1f}% -- K_rank "
+            f"should beat Slater by 5x"
+        )
+
+
+def test_krank_s_shell_unchanged():
+    """For s-targets, K_rank substitution does not change s-on-s screening,
+    so the prediction equals Slater's."""
+    s_targets = [1, 2, 3, 4, 11, 12]
+    for Z in s_targets:
+        _, ie_sl = predict_ionization_energy(Z, "slater")
+        _, ie_kr = predict_ionization_energy(Z, "krank")
+        assert ie_sl == pytest.approx(ie_kr, rel=1e-9), (
+            f"Z={Z}: K_rank rule must equal Slater for s-targets"
+        )
+
+
+def test_krank_mean_error_below_25_pct():
+    """K_rank substrate model: mean abs error < 25% across H..Ar."""
+    rows = build_rows(18)
+    errs = [r.err_krank_pct for r in rows]
+    mean_err = sum(errs) / len(errs)
+    assert mean_err < 25.0, f"K_rank mean = {mean_err:.2f}%"
+
+
+# --------------------------------------------------------------------------- #
+# Substrate-HF (Roothaan-HF orbitals + Koopmans)                              #
+# --------------------------------------------------------------------------- #
+
+def test_HF_orbital_table_covers_h_through_ar():
+    for Z in range(1, 19):
+        assert Z in HF_ORBITAL_HARTREE
+        assert HF_ORBITAL_HARTREE[Z] < 0.0   # bound-state orbital
+
+
+def test_HF_hydrogen_exact():
+    """H 1s HF eigenvalue is exactly -0.5 Hartree -> 13.6057 eV."""
+    z_eq, ie = predict_substrate_HF(1)
+    assert ie == pytest.approx(13.6057, abs=1e-3)
+    # Diagnostic Z_eff_eq for H must be 1
+    assert z_eq == pytest.approx(1.0, abs=1e-3)
+
+
+def test_HF_mean_error_below_10_pct():
+    """Substrate-HF (Roothaan-HF + Koopmans): mean abs err < 10% across H..Ar."""
+    rows = build_rows(18)
+    errs = [r.err_HF_pct for r in rows]
+    mean_err = sum(errs) / len(errs)
+    assert mean_err < 10.0, f"Substrate-HF mean = {mean_err:.2f}%"
+
+
+def test_HF_outperforms_K_rank_on_average():
+    """HF Koopmans should beat the K_rank substrate refinement on average,
+    because HF carries proper exchange treatment from a self-consistent solve."""
+    rows = build_rows(18)
+    err_kr = sum(r.err_krank_pct for r in rows) / len(rows)
+    err_hf = sum(r.err_HF_pct for r in rows) / len(rows)
+    assert err_hf < err_kr, (
+        f"K_rank mean {err_kr:.2f}%, HF mean {err_hf:.2f}% -- HF should win"
+    )
+
+
+def test_HF_oxygen_is_largest_anomaly():
+    """Half-filled p-shell (O, Z=8) is the worst Koopmans anomaly because
+    Koopmans misses the spin-coupling exchange-stabilisation effect."""
+    rows = build_rows(18)
+    o_row = next(r for r in rows if r.Z == 8)
+    other_p = [r for r in rows if r.ell_least == 1 and r.Z != 8]
+    assert o_row.err_HF_pct > max(r.err_HF_pct for r in other_p), (
+        "O (half-filled 2p^4) should have the largest HF Koopmans error "
+        "among all p-shell elements"
+    )
+
+
+def test_predict_substrate_HF_unknown_Z_raises():
+    with pytest.raises(ValueError):
+        predict_substrate_HF(19)
+
+
+# --------------------------------------------------------------------------- #
+# Cross-mode: ranking of methods on mean error                                #
+# --------------------------------------------------------------------------- #
+
+def test_method_ranking_on_mean_error():
+    """Calibrated < Substrate-HF < K_rank < Slater (mean abs error)."""
+    res = run_test()
+    s = res["summary"]
+    assert s["calibrated_mean_pct"]   < s["substrate_HF_mean_pct"]   # type: ignore[index]
+    assert s["substrate_HF_mean_pct"] < s["krank_mean_pct"]          # type: ignore[index]
+    assert s["krank_mean_pct"]        < s["slater_mean_pct"]         # type: ignore[index]
