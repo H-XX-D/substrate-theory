@@ -139,6 +139,75 @@ def dugdale_rp(K_I: float, sigma_y: float) -> float:
 
 
 # --------------------------------------------------------------------------- #
+# Substrate-derived Young's modulus (from substrate B, G predictions)         #
+# --------------------------------------------------------------------------- #
+#
+# Once substrate_elasticity provides per-material (B, G), the Young's modulus
+# E follows from the standard isotropic identity:
+#     E = 9·B·G / (3B + G)
+# This lets us replace the empirical E in MATERIALS for the elements covered
+# by substrate_elasticity (Cu, Al, Au, Ni, Pb, Fe, diamond, Si). For the
+# alloys (Steel 4340, Inconel, etc.) we keep the empirical E as anchor since
+# alloy moduli are not yet substrate-predicted.
+
+# Map the alloy/element MATERIALS keys to the substrate-elasticity keys
+# (where applicable). Keys absent from this map fall back to empirical E.
+_ALLOY_BASE_ELEMENT: Dict[str, str] = {
+    "Aluminum 7075-T6":    "Aluminum",
+    "Aluminum 2024-T3":    "Aluminum",
+    "Aluminum 6061-T6":    "Aluminum",
+    # Steels are Fe-based, but the alloy moduli differ enough that we don't
+    # auto-substitute without flagging. The substrate-elasticity Iron module
+    # gives E ≈ 130 GPa vs measured 205 GPa for Steel 4340; the difference
+    # is the alloying contribution to the elastic spring constant.
+}
+
+
+def youngs_modulus_substrate_GPa(material_name: str) -> float | None:
+    """Substrate-derived Young's modulus E = 9BG/(3B+G) for a material.
+
+    Returns the substrate-predicted Young's modulus in GPa for materials
+    covered by substrate_elasticity (Cu, Al, Au, Ni, Pb, Fe, diamond, Si),
+    or None if the material is not in the substrate-elasticity database
+    (or it is a complex alloy that would need its own per-alloy entry).
+    """
+    from .substrate_elasticity import (
+        MATERIALS as ELASTIC_MATS,
+        bulk_modulus_substrate,
+        shear_modulus_substrate,
+    )
+
+    base = _ALLOY_BASE_ELEMENT.get(material_name, material_name)
+    if base not in ELASTIC_MATS:
+        return None
+    emat = ELASTIC_MATS[base]
+    B = bulk_modulus_substrate(emat)
+    G = shear_modulus_substrate(emat)
+    return 9.0 * B * G / (3.0 * B + G)
+
+
+def substrate_E_predictions() -> Dict[str, Dict[str, float]]:
+    """Return substrate-derived Young's modulus alongside measured E.
+
+    For each material in MATERIALS that has a substrate-elasticity entry
+    (or maps to one via _ALLOY_BASE_ELEMENT), compute E_substrate and
+    compare to E_measured. Returns a dict keyed by material name.
+    """
+    out: Dict[str, Dict[str, float]] = {}
+    for name, props in MATERIALS.items():
+        E_sub = youngs_modulus_substrate_GPa(name)
+        if E_sub is None:
+            continue
+        E_meas = props["E"]
+        out[name] = {
+            "E_substrate_GPa": E_sub,
+            "E_measured_GPa":  E_meas,
+            "E_rel_err":       (E_sub - E_meas) / E_meas,
+        }
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Comparison utilities                                                        #
 # --------------------------------------------------------------------------- #
 

@@ -297,32 +297,29 @@ def test_predict_with_cornell_falls_back_for_baryons() -> None:
         assert corrected == pytest.approx(bare, rel=1e-12)
 
 
-def test_jpsi_corrected_within_8pct() -> None:
-    """J/ψ Cornell prediction within 8% of PDG 3097 MeV.
+def test_jpsi_corrected_within_2pct() -> None:
+    """J/ψ Cornell prediction within 2% of PDG 3097 MeV.
 
-    Was <5% with empirical α_s(m_c) = 0.30. Now substrate-derived
-    α_s(m_c) ≈ 0.020 from §18.61.1 K(ξ) Möbius coupling — a smaller
-    Coulomb attraction means weaker binding, so J/ψ is over-predicted
-    at +6.7% (was -0.2% with empirical α_s). The threshold relaxes
-    from 5% to 8% to honestly reflect that the substrate's power-law
-    K-running gives the WRONG α_s magnitude at heavy-quark scales —
-    see alpha_s_running_from_K module verdict. Closing this gap is
-    blocked on an open derivation (substrate logarithmic running).
+    Was +6.7% with the §18.61.1 power-law K(ξ) running (α_s(m_c) ≈ 0.020,
+    15× too small). Now uses the substrate-derived QCD log running from
+    :mod:`substrate_qcd_running` (β_0 = 11 − (2/3)n_f from K_rank, F/R;
+    α_s(M_Z) anchor = K_pair⁴·α_em from Möbius sheet count). Substrate
+    α_s(m_c) ≈ 0.31 vs PDG 0.30 (sub-2%), Cornell J/ψ lands at -0.34%.
+    Restored to PDG-comparable precision with ZERO free parameters.
     """
     pred = predict_substrate_with_cornell("J/psi")
     pdg = PDG_2024["J/psi"]
     rel = abs(pred - pdg) / pdg
-    assert rel < 0.08, f"J/psi Cornell pred = {pred:.1f} MeV, PDG = {pdg:.1f}, rel = {rel:.3%}"
+    assert rel < 0.02, f"J/psi Cornell pred = {pred:.1f} MeV, PDG = {pdg:.1f}, rel = {rel:.3%}"
 
 
 def test_upsilon_corrected_within_5pct() -> None:
     """Υ Cornell prediction within 5% of PDG 9460 MeV.
 
-    With substrate-derived α_s(m_b) ≈ 1.6e-6 from §18.61.1 K(ξ) Möbius
-    coupling, the Coulomb correction is essentially zero and the Cornell
-    potential reduces to V(r) ≈ σ·r. Coincidentally this gives Υ at
-    -0.09% (better than the empirical-α_s -2.96%) because for the heavy
-    bb̄ system the Coulomb correction was small either way.
+    Now uses substrate-derived α_s(m_b) ≈ 0.20 (PDG 0.22) via proper
+    QCD log running from :mod:`substrate_qcd_running` with β_0 derived
+    from K_rank, F/R. Cornell Υ lands at -2.7% (was -0.1% with the
+    coincidental power-law-zeroing of α_s, -3.0% with empirical PDG α_s).
     """
     pred = predict_substrate_with_cornell("Upsilon")
     pdg = PDG_2024["Upsilon"]
@@ -396,7 +393,7 @@ def test_residual_corrected_attributes_populated() -> None:
     assert jpsi.pred_corrected_mev is not None
     assert jpsi.abs_err_corrected_mev is not None
     assert jpsi.rel_err_corrected is not None
-    # Corrected J/ψ should beat the bare prediction by at least 4x in error.
-    # (Was 10x with empirical α_s(m_c) = 0.30; now 5x with substrate-derived
-    # α_s(m_c) ≈ 0.020 because the substrate K-running is power-law not log.)
+    # Corrected J/ψ should beat the bare prediction by a large factor.
+    # With substrate-derived α_s via proper log running (β_0 from K_rank,
+    # F/R), J/ψ now lands at <1% vs ~50% bare — a factor of ~50 improvement.
     assert abs(jpsi.rel_err_corrected) < abs(jpsi.rel_err) / 4.0

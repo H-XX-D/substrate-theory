@@ -289,6 +289,61 @@ MATERIAL_PHONON_PARAMS: dict = {
 
 
 # ---------------------------------------------------------------------------
+# Substrate-derived (lambda, omega_log) lookup
+# ---------------------------------------------------------------------------
+#
+# The substrate Eliashberg derivation in
+# :mod:`src.stiff_medium.substrate_eliashberg` builds alpha^2 F(omega) from
+# the substrate phonon spectrum (Debye-quadratic acoustic background +
+# Einstein peak at (2/3) omega_D from K_4-cell internal modes) plus a
+# Hopfield-style electron-phonon coupling whose magnitude is anchored ONCE
+# on Pb (lambda_Pb = 1.55).  The function below builds a substitute for
+# MATERIAL_PHONON_PARAMS using ONLY substrate-derivable inputs (M_ion,
+# elastic moduli, valence) for the SP-elemental subset; transition metals
+# (Nb, V, Ta) are passed through with the empirical entries because the
+# free-electron substrate N(0) does not capture their d-band Fermi-level
+# DOS (a known substrate-Eliashberg honest-caveat).
+#
+# This lets ``run_test(phonon_params=substrate_phonon_params())`` rerun
+# the full BCS gap-ratio test with substrate-derived strong-coupling
+# corrections, providing a head-to-head comparison with the empirical
+# baseline.
+
+def substrate_phonon_params(
+    fall_back_to_empirical: bool = True,
+) -> dict:
+    """Return a (lambda, omega_log_K) dict derived from the substrate
+    Eliashberg derivation in :mod:`substrate_eliashberg`.
+
+    Parameters
+    ----------
+    fall_back_to_empirical
+        If True (default), names not in
+        ``substrate_eliashberg.MATERIAL_DB`` are filled in from
+        ``MATERIAL_PHONON_PARAMS`` so the returned dict has the same key
+        set as ``MATERIAL_PHONON_PARAMS`` (typically the only fall-back is
+        MgB_2, which the substrate single-band model does not handle).
+        If False, the returned dict only contains substrate-supplied keys.
+
+    Returns
+    -------
+    dict[str, tuple[float, float]]
+        Same shape as MATERIAL_PHONON_PARAMS but with substrate-derived
+        (lambda, omega_log_K) for SP-metal entries.
+    """
+    # Lazy import to avoid a circular import at module load time.
+    from .substrate_eliashberg import MATERIAL_DB, predict_lambda_omega_log
+    out: dict = {}
+    for name in MATERIAL_DB:
+        out[name] = predict_lambda_omega_log(name)
+    if fall_back_to_empirical:
+        for name, val in MATERIAL_PHONON_PARAMS.items():
+            if name not in out:
+                out[name] = val
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Multiband module: MgB_2 sigma + pi
 # ---------------------------------------------------------------------------
 #
@@ -317,22 +372,46 @@ class MgB2Bands:
 def mgb2_multiband_prediction(bands: MgB2Bands = MgB2Bands()) -> dict:
     """Per-band gap-ratio breakdown for MgB_2.
 
+    The MEASURED-side rows (R_sigma, R_pi, R_composite) use the Choi 2002
+    half-gaps stored on the bands dataclass.  The SUBSTRATE-side rows
+    (R_sigma_substrate_pred, R_pi_substrate_pred, etc.) are derived
+    parameter-free from the K_4 face-pair (sigma) and Q_3 axis (pi)
+    couplings encoded in :mod:`src.stiff_medium.substrate_multiband`.
+
     Returns a dict with:
-        R_sigma            : 2 Delta_sigma / (k_B T_c)
-        R_pi               : 2 Delta_pi    / (k_B T_c)
+        R_sigma            : 2 Delta_sigma_exp / (k_B T_c)         (measured)
+        R_pi               : 2 Delta_pi_exp    / (k_B T_c)         (measured)
         R_composite        : (w_sigma * 2 Delta_sigma + w_pi * 2 Delta_pi)
-                              / (k_B T_c)
+                              / (k_B T_c)                          (measured)
         R_weighted_substrate
-                          : same as R_composite but expressed as the
-                            DOS-weighted average of the two band ratios
-                            (algebraically identical for fixed T_c).
+                          : DOS-weighted average of measured band ratios
+                            (algebraically identical to R_composite for
+                            a fixed T_c).
         R_pred_weak        : substrate / BCS weak-coupling line (3.528)
         R_pred_dominant_AD : Allen-Dynes correction applied to dominant
                               sigma band (with sigma lambda, omega_log)
         dev_composite_pct  : composite vs measured (using full sigma 2D=14)
         Choi_R_sigma_ref   : 4.0 (Choi et al. 2002 Eliashberg result)
         Choi_R_pi_ref      : 1.2 (Choi et al. 2002 Eliashberg result)
+
+        --- substrate (K_4 / Q_3) parameter-free predictions ---
+        Delta_sigma_substrate_pred_meV
+                          : (Lambda_QCD / n_R) * (3 / K_rank)  =  6.667 meV
+        Delta_pi_substrate_pred_meV
+                          : (Lambda_QCD / n_R) * (1 / (F * R)) =  1.852 meV
+        R_sigma_substrate_pred
+                          : 2 Delta_sigma_substrate / (k_B T_c)
+        R_pi_substrate_pred
+                          : 2 Delta_pi_substrate    / (k_B T_c)
+        dev_sigma_substrate_pct
+                          : substrate sigma vs Choi 4.0
+        dev_pi_substrate_pct
+                          : substrate pi    vs Choi 1.2
+        ratio_sigma_pi_substrate
+                          : 3 * F * R / K_rank = 18/5 = 3.6
+                            (vs 7/2 = 3.5 measured)
     """
+    # Measured side -------------------------------------------------
     twoD_sigma = 2.0 * bands.Delta_sigma_meV
     twoD_pi    = 2.0 * bands.Delta_pi_meV
     R_sigma = measured_ratio(bands.Tc_K, twoD_sigma)
@@ -342,6 +421,36 @@ def mgb2_multiband_prediction(bands: MgB2Bands = MgB2Bands()) -> dict:
     R_pred_dominant = predict_with_allen_dynes(
         bands.lambda_sigma, bands.omega_log_sigma_K, bands.Tc_K
     )
+
+    # Substrate K_4 / Q_3 predictions (parameter-free) ----------------
+    # Local import to keep the bcs_gap_ratio_test module importable even
+    # when the substrate_multiband module is absent (graceful fallback).
+    try:
+        from .substrate_multiband import (
+            MgB2SubstrateBands,
+            gap_pi_band,
+            gap_sigma_band,
+            ratio_sigma_pi,
+        )
+        sub_bands = MgB2SubstrateBands(Tc_K=bands.Tc_K)
+        Delta_sigma_sub = gap_sigma_band(sub_bands)
+        Delta_pi_sub    = gap_pi_band(sub_bands)
+        R_sigma_sub = measured_ratio(bands.Tc_K, 2.0 * Delta_sigma_sub)
+        R_pi_sub    = measured_ratio(bands.Tc_K, 2.0 * Delta_pi_sub)
+        ratio_sub   = ratio_sigma_pi(sub_bands)
+        dev_sigma_substrate_pct = deviation_percent(
+            R_sigma_sub, R_pred=4.0)
+        dev_pi_substrate_pct = deviation_percent(
+            R_pi_sub, R_pred=1.2)
+    except ImportError:
+        Delta_sigma_sub = float("nan")
+        Delta_pi_sub    = float("nan")
+        R_sigma_sub     = float("nan")
+        R_pi_sub        = float("nan")
+        ratio_sub       = float("nan")
+        dev_sigma_substrate_pct = float("nan")
+        dev_pi_substrate_pct    = float("nan")
+
     return {
         "R_sigma":            R_sigma,
         "R_pi":               R_pi,
@@ -354,6 +463,14 @@ def mgb2_multiband_prediction(bands: MgB2Bands = MgB2Bands()) -> dict:
         "dev_composite_pct":  deviation_percent(R_composite, BCS_RATIO_PRED),
         "Choi_R_sigma_ref":   4.0,
         "Choi_R_pi_ref":      1.2,
+        # Substrate (K_4 / Q_3) zero-parameter predictions
+        "Delta_sigma_substrate_pred_meV": Delta_sigma_sub,
+        "Delta_pi_substrate_pred_meV":    Delta_pi_sub,
+        "R_sigma_substrate_pred":         R_sigma_sub,
+        "R_pi_substrate_pred":            R_pi_sub,
+        "dev_sigma_substrate_pct":        dev_sigma_substrate_pct,
+        "dev_pi_substrate_pct":           dev_pi_substrate_pct,
+        "ratio_sigma_pi_substrate":       ratio_sub,
     }
 
 
@@ -378,14 +495,26 @@ class ResultRow:
         (lambda, omega_log) for this material.  Equals ``R_pred``
         when no phonon parameters are available or the AD correction
         is out of its validity range.
+    R_pred_ad_substrate
+        Allen--Dynes-corrected prediction using SUBSTRATE-DERIVED
+        (lambda, omega_log) from :mod:`substrate_eliashberg`.  Equals
+        ``R_pred`` when no substrate-derived phonon entry exists for
+        the material.
     dev_pct
         Deviation of R_meas from bare R_pred, in percent.
     dev_pct_ad
-        Deviation of R_meas from Allen-Dynes-corrected R_pred_ad.
+        Deviation of R_meas from Allen-Dynes-corrected R_pred_ad
+        (empirical phonon parameters).
+    dev_pct_ad_substrate
+        Deviation of R_meas from substrate-AD R_pred_ad_substrate.
     within_5pct
         ``abs(dev_pct) <= threshold_pct`` (BARE).
     within_5pct_ad
-        ``abs(dev_pct_ad) <= threshold_pct`` (Allen-Dynes-corrected).
+        ``abs(dev_pct_ad) <= threshold_pct`` (Allen-Dynes-corrected,
+        EMPIRICAL phonon parameters).
+    within_5pct_ad_substrate
+        ``abs(dev_pct_ad_substrate) <= threshold_pct`` (Allen-Dynes-
+        corrected, SUBSTRATE-derived phonon parameters).
     """
     name:           str
     T_c_K:          float
@@ -394,10 +523,13 @@ class ResultRow:
     R_meas:         float
     R_pred:         float
     R_pred_ad:      float
+    R_pred_ad_substrate: float
     dev_pct:        float
     dev_pct_ad:     float
+    dev_pct_ad_substrate: float
     within_5pct:    bool
     within_5pct_ad: bool
+    within_5pct_ad_substrate: bool
     note:           str
 
 
@@ -406,6 +538,7 @@ def run_test(
     R_pred:    float = BCS_RATIO_PRED,
     threshold_pct: float = 5.0,
     phonon_params: dict = MATERIAL_PHONON_PARAMS,
+    phonon_params_substrate: dict | None = None,
 ) -> List[ResultRow]:
     """Compute R_meas, bare and Allen-Dynes-corrected deviations,
     and pass/fail at ``threshold_pct``.
@@ -417,7 +550,25 @@ def run_test(
     the listed (lambda, omega_log).  The single-band AD line is known
     to underestimate the multiband gap ratio; see
     ``mgb2_multiband_prediction`` for the per-band breakdown.
+
+    Parameters
+    ----------
+    phonon_params
+        EMPIRICAL (lambda, omega_log) per material from Allen-Dynes /
+        Carbotte literature.  Default ``MATERIAL_PHONON_PARAMS``.
+    phonon_params_substrate
+        SUBSTRATE-DERIVED (lambda, omega_log) per material from
+        :func:`substrate_phonon_params`.  When ``None`` (default), the
+        function builds the substrate-derived map automatically; pass
+        an empty dict to disable substrate-AD computation entirely.
     """
+    if phonon_params_substrate is None:
+        try:
+            phonon_params_substrate = substrate_phonon_params()
+        except (ImportError, KeyError):
+            # Graceful fallback: substrate module unavailable.
+            phonon_params_substrate = {}
+
     rows: List[ResultRow] = []
     for m in materials:
         R = measured_ratio(m.T_c_K, m.gap_meV)
@@ -427,7 +578,14 @@ def run_test(
             R_pred_ad = predict_with_allen_dynes(lam, wlog, m.T_c_K, R_pred)
         else:
             R_pred_ad = R_pred
-        d_ad = deviation_percent(R, R_pred_ad)
+        if m.name in phonon_params_substrate:
+            lam_s, wlog_s = phonon_params_substrate[m.name]
+            R_pred_ad_s = predict_with_allen_dynes(
+                lam_s, wlog_s, m.T_c_K, R_pred)
+        else:
+            R_pred_ad_s = R_pred
+        d_ad   = deviation_percent(R, R_pred_ad)
+        d_ad_s = deviation_percent(R, R_pred_ad_s)
         rows.append(ResultRow(
             name=m.name,
             T_c_K=m.T_c_K,
@@ -436,10 +594,13 @@ def run_test(
             R_meas=R,
             R_pred=R_pred,
             R_pred_ad=R_pred_ad,
+            R_pred_ad_substrate=R_pred_ad_s,
             dev_pct=d,
             dev_pct_ad=d_ad,
+            dev_pct_ad_substrate=d_ad_s,
             within_5pct=abs(d) <= threshold_pct,
             within_5pct_ad=abs(d_ad) <= threshold_pct,
+            within_5pct_ad_substrate=abs(d_ad_s) <= threshold_pct,
             note=m.note,
         ))
     return rows
@@ -462,35 +623,47 @@ def summary_stats(rows: List[ResultRow]) -> dict:
     """
     if not rows:
         raise ValueError("empty rows")
-    abs_devs    = np.array([abs(r.dev_pct)    for r in rows], dtype=float)
-    abs_devs_ad = np.array([abs(r.dev_pct_ad) for r in rows], dtype=float)
-    n_pass      = int(sum(1 for r in rows if r.within_5pct))
-    n_pass_ad   = int(sum(1 for r in rows if r.within_5pct_ad))
-    elem        = [r for r in rows if r.klass == "elemental"]
-    elem_abs    = np.array([abs(r.dev_pct)    for r in elem], dtype=float)
-    elem_abs_ad = np.array([abs(r.dev_pct_ad) for r in elem], dtype=float)
-    elem_pass    = int(sum(1 for r in elem if r.within_5pct))
-    elem_pass_ad = int(sum(1 for r in elem if r.within_5pct_ad))
+    abs_devs       = np.array([abs(r.dev_pct)              for r in rows], dtype=float)
+    abs_devs_ad    = np.array([abs(r.dev_pct_ad)           for r in rows], dtype=float)
+    abs_devs_ad_s  = np.array([abs(r.dev_pct_ad_substrate) for r in rows], dtype=float)
+    n_pass         = int(sum(1 for r in rows if r.within_5pct))
+    n_pass_ad      = int(sum(1 for r in rows if r.within_5pct_ad))
+    n_pass_ad_s    = int(sum(1 for r in rows if r.within_5pct_ad_substrate))
+    elem           = [r for r in rows if r.klass == "elemental"]
+    elem_abs       = np.array([abs(r.dev_pct)              for r in elem], dtype=float)
+    elem_abs_ad    = np.array([abs(r.dev_pct_ad)           for r in elem], dtype=float)
+    elem_abs_ad_s  = np.array([abs(r.dev_pct_ad_substrate) for r in elem], dtype=float)
+    elem_pass      = int(sum(1 for r in elem if r.within_5pct))
+    elem_pass_ad   = int(sum(1 for r in elem if r.within_5pct_ad))
+    elem_pass_ad_s = int(sum(1 for r in elem if r.within_5pct_ad_substrate))
     return {
-        "n":                len(rows),
-        "n_within_5pct":    n_pass,
-        "n_within_5pct_ad": n_pass_ad,
-        "mean_abs_dev":     float(abs_devs.mean()),
-        "mean_abs_dev_ad":  float(abs_devs_ad.mean()),
-        "max_abs_dev":      float(abs_devs.max()),
-        "max_abs_dev_ad":   float(abs_devs_ad.max()),
-        "min_abs_dev":      float(abs_devs.min()),
-        "min_abs_dev_ad":   float(abs_devs_ad.min()),
+        "n":                          len(rows),
+        "n_within_5pct":              n_pass,
+        "n_within_5pct_ad":           n_pass_ad,
+        "n_within_5pct_ad_substrate": n_pass_ad_s,
+        "mean_abs_dev":               float(abs_devs.mean()),
+        "mean_abs_dev_ad":            float(abs_devs_ad.mean()),
+        "mean_abs_dev_ad_substrate":  float(abs_devs_ad_s.mean()),
+        "max_abs_dev":                float(abs_devs.max()),
+        "max_abs_dev_ad":             float(abs_devs_ad.max()),
+        "max_abs_dev_ad_substrate":   float(abs_devs_ad_s.max()),
+        "min_abs_dev":                float(abs_devs.min()),
+        "min_abs_dev_ad":             float(abs_devs_ad.min()),
+        "min_abs_dev_ad_substrate":   float(abs_devs_ad_s.min()),
         "elemental_only": {
-            "n":                len(elem),
-            "n_within_5pct":    elem_pass,
-            "n_within_5pct_ad": elem_pass_ad,
-            "mean_abs_dev":     float(elem_abs.mean())    if len(elem) else 0.0,
-            "mean_abs_dev_ad":  float(elem_abs_ad.mean()) if len(elem) else 0.0,
-            "max_abs_dev":      float(elem_abs.max())     if len(elem) else 0.0,
-            "max_abs_dev_ad":   float(elem_abs_ad.max())  if len(elem) else 0.0,
-            "min_abs_dev":      float(elem_abs.min())     if len(elem) else 0.0,
-            "min_abs_dev_ad":   float(elem_abs_ad.min())  if len(elem) else 0.0,
+            "n":                          len(elem),
+            "n_within_5pct":              elem_pass,
+            "n_within_5pct_ad":           elem_pass_ad,
+            "n_within_5pct_ad_substrate": elem_pass_ad_s,
+            "mean_abs_dev":               float(elem_abs.mean())     if len(elem) else 0.0,
+            "mean_abs_dev_ad":            float(elem_abs_ad.mean())  if len(elem) else 0.0,
+            "mean_abs_dev_ad_substrate":  float(elem_abs_ad_s.mean())if len(elem) else 0.0,
+            "max_abs_dev":                float(elem_abs.max())      if len(elem) else 0.0,
+            "max_abs_dev_ad":             float(elem_abs_ad.max())   if len(elem) else 0.0,
+            "max_abs_dev_ad_substrate":   float(elem_abs_ad_s.max()) if len(elem) else 0.0,
+            "min_abs_dev":                float(elem_abs.min())      if len(elem) else 0.0,
+            "min_abs_dev_ad":             float(elem_abs_ad.min())   if len(elem) else 0.0,
+            "min_abs_dev_ad_substrate":   float(elem_abs_ad_s.min()) if len(elem) else 0.0,
         },
     }
 
@@ -620,15 +793,20 @@ def _print_table(rows: List[ResultRow]) -> None:
     print(f"\nBCS gap ratio test: substrate prediction (bare) = "
           f"{BCS_RATIO_PRED:.6f}")
     print(f" {'name':<6}  {'T_c[K]':>7}  {'2D[meV]':>8}  "
-          f"{'R_meas':>7}  {'R_AD':>6}  {'dev_b':>7}  {'dev_AD':>7}  "
-          f"{'<=5%bare':>9}  {'<=5%AD':>7}  class")
+          f"{'R_meas':>7}  "
+          f"{'R_AD_e':>7}  {'R_AD_s':>7}  "
+          f"{'dev_b':>7}  {'dev_ADe':>7}  {'dev_ADs':>7}  "
+          f"{'<=5%b':>5}  {'<=5%ADe':>7}  {'<=5%ADs':>7}  class")
     for r in rows:
-        flag_b  = "Y" if r.within_5pct    else " "
-        flag_ad = "Y" if r.within_5pct_ad else " "
+        flag_b   = "Y" if r.within_5pct              else " "
+        flag_ad  = "Y" if r.within_5pct_ad           else " "
+        flag_ads = "Y" if r.within_5pct_ad_substrate else " "
         print(f" {r.name:<6}  {r.T_c_K:>7.2f}  {r.gap_meV:>8.3f}  "
-              f"{r.R_meas:>7.3f}  {r.R_pred_ad:>6.3f}  "
+              f"{r.R_meas:>7.3f}  "
+              f"{r.R_pred_ad:>7.3f}  {r.R_pred_ad_substrate:>7.3f}  "
               f"{r.dev_pct:>+7.2f}  {r.dev_pct_ad:>+7.2f}  "
-              f"{flag_b:>9}  {flag_ad:>7}  {r.klass}")
+              f"{r.dev_pct_ad_substrate:>+7.2f}  "
+              f"{flag_b:>5}  {flag_ad:>7}  {flag_ads:>7}  {r.klass}")
 
 
 def main() -> None:
@@ -638,29 +816,51 @@ def main() -> None:
     print("\nAggregate (all materials):")
     print(f"  n={stats['n']}, "
           f"bare n_within_5pct={stats['n_within_5pct']}, "
-          f"AD   n_within_5pct={stats['n_within_5pct_ad']}")
-    print(f"  bare mean|dev|={stats['mean_abs_dev']:.2f}%  max|dev|="
+          f"AD-emp n_within_5pct={stats['n_within_5pct_ad']}, "
+          f"AD-sub n_within_5pct={stats['n_within_5pct_ad_substrate']}")
+    print(f"  bare    mean|dev|={stats['mean_abs_dev']:.2f}%  max|dev|="
           f"{stats['max_abs_dev']:.2f}%")
-    print(f"  AD   mean|dev|={stats['mean_abs_dev_ad']:.2f}%  max|dev|="
+    print(f"  AD-emp  mean|dev|={stats['mean_abs_dev_ad']:.2f}%  max|dev|="
           f"{stats['max_abs_dev_ad']:.2f}%")
+    print(f"  AD-sub  mean|dev|={stats['mean_abs_dev_ad_substrate']:.2f}%  max|dev|="
+          f"{stats['max_abs_dev_ad_substrate']:.2f}%")
     elem = stats["elemental_only"]
     print("Aggregate (elemental only):")
     print(f"  n={elem['n']}, "
           f"bare n_within_5pct={elem['n_within_5pct']}, "
-          f"AD   n_within_5pct={elem['n_within_5pct_ad']}")
-    print(f"  bare mean|dev|={elem['mean_abs_dev']:.2f}%  max|dev|="
+          f"AD-emp n_within_5pct={elem['n_within_5pct_ad']}, "
+          f"AD-sub n_within_5pct={elem['n_within_5pct_ad_substrate']}")
+    print(f"  bare    mean|dev|={elem['mean_abs_dev']:.2f}%  max|dev|="
           f"{elem['max_abs_dev']:.2f}%")
-    print(f"  AD   mean|dev|={elem['mean_abs_dev_ad']:.2f}%  max|dev|="
+    print(f"  AD-emp  mean|dev|={elem['mean_abs_dev_ad']:.2f}%  max|dev|="
           f"{elem['max_abs_dev_ad']:.2f}%")
+    print(f"  AD-sub  mean|dev|={elem['mean_abs_dev_ad_substrate']:.2f}%  max|dev|="
+          f"{elem['max_abs_dev_ad_substrate']:.2f}%")
     # MgB_2 multiband breakdown
     mb = mgb2_multiband_prediction()
-    print("\nMgB_2 multiband (per-band):")
+    print("\nMgB_2 multiband (per-band, MEASURED):")
     print(f"  R_sigma     = {mb['R_sigma']:.3f}  (Choi 2002 Eliashberg "
           f"~ {mb['Choi_R_sigma_ref']:.2f})")
     print(f"  R_pi        = {mb['R_pi']:.3f}  (Choi 2002 Eliashberg "
           f"~ {mb['Choi_R_pi_ref']:.2f})")
     print(f"  R_composite = {mb['R_composite']:.3f}  "
           f"(DOS-weighted full gap)")
+    print("\nMgB_2 multiband (per-band, SUBSTRATE K_4/Q_3 prediction, "
+          "zero parameters):")
+    print(f"  Delta_sigma = {mb['Delta_sigma_substrate_pred_meV']:.3f} meV  "
+          f"(measured 7.0, dev "
+          f"{(mb['Delta_sigma_substrate_pred_meV'] - 7.0)/7.0*100:+.2f}%)")
+    print(f"  Delta_pi    = {mb['Delta_pi_substrate_pred_meV']:.3f} meV  "
+          f"(measured 2.0, dev "
+          f"{(mb['Delta_pi_substrate_pred_meV'] - 2.0)/2.0*100:+.2f}%)")
+    print(f"  R_sigma     = {mb['R_sigma_substrate_pred']:.3f}  (Choi "
+          f"~ {mb['Choi_R_sigma_ref']:.2f}, dev "
+          f"{mb['dev_sigma_substrate_pct']:+.2f}%)")
+    print(f"  R_pi        = {mb['R_pi_substrate_pred']:.3f}  (Choi "
+          f"~ {mb['Choi_R_pi_ref']:.2f}, dev "
+          f"{mb['dev_pi_substrate_pct']:+.2f}%)")
+    print(f"  ratio sigma/pi = {mb['ratio_sigma_pi_substrate']:.3f}  "
+          f"(measured 3.5)")
 
 
 __all__ = [
@@ -680,6 +880,7 @@ __all__ = [
     "predict_with_allen_dynes",
     "render_bcs_gap_ratio_test",
     "run_test",
+    "substrate_phonon_params",
     "summary_stats",
 ]
 

@@ -217,6 +217,110 @@ def predict_theta_D(mat: Material) -> Dict[str, float]:
 
 
 # --------------------------------------------------------------------------- #
+# SUBSTRATE-DERIVED MODULI PATHWAY                                            #
+# --------------------------------------------------------------------------- #
+#
+# Rather than feeding the EXPERIMENTAL (B, G) into the Debye formula, we can
+# now use the SUBSTRATE-DERIVED (B, G) from substrate_elasticity.py. This
+# closes the calibration loop: every input to the Θ_D prediction is then
+# either substrate-derived or a primary anchor (ε_coh, d_NN, ρ_mass, M).
+#
+# The substrate-elasticity module covers 8 of the 14 debye_test materials
+# (Cu, Al, Au, Ni, Pb, Fe, diamond, Si). For materials present in both
+# databases, we substitute substrate-predicted (B, G) and re-run the Debye
+# pipeline.
+
+
+def predict_theta_D_substrate_moduli(mat: Material) -> Dict[str, float]:
+    """Debye-temperature prediction using SUBSTRATE-DERIVED (B, G).
+
+    Uses substrate_elasticity.bulk_modulus_substrate /
+    shear_modulus_substrate to predict (B, G) from atomic K_4 face-pair
+    coupling, then feeds those into the standard Debye pipeline.
+
+    Falls back to the empirical (B, G) for materials not in the substrate-
+    elasticity database (Silver, Tungsten, Germanium, Beryllium, Magnesium,
+    Tin), with a 'using_substrate_moduli' flag.
+    """
+    from .substrate_elasticity import (
+        MATERIALS as ELASTIC_MATS,
+        bulk_modulus_substrate,
+        shear_modulus_substrate,
+    )
+
+    if mat.name in ELASTIC_MATS:
+        emat = ELASTIC_MATS[mat.name]
+        B_use = bulk_modulus_substrate(emat)
+        G_use = shear_modulus_substrate(emat)
+        using_substrate = True
+    else:
+        B_use = mat.B_GPa
+        G_use = mat.G_GPa
+        using_substrate = False
+
+    c_L = longitudinal_speed(B_use, G_use, mat.rho_mass)
+    c_T = transverse_speed(G_use, mat.rho_mass)
+    c_D = debye_average_speed(c_L, c_T)
+    n = mat.n_atoms_per_m3
+    theta_pred = debye_temperature(c_D, n)
+    theta_meas = mat.theta_D_K
+    rel_err = (theta_pred - theta_meas) / theta_meas
+    return {
+        "name":               mat.name,
+        "lattice":            mat.lattice,
+        "B_GPa_substrate":    B_use,
+        "G_GPa_substrate":    G_use,
+        "B_GPa_measured":     mat.B_GPa,
+        "G_GPa_measured":     mat.G_GPa,
+        "using_substrate":    using_substrate,
+        "c_Debye":            c_D,
+        "theta_pred":         theta_pred,
+        "theta_meas":         theta_meas,
+        "rel_err":            rel_err,
+    }
+
+
+def run_test_substrate_moduli() -> Dict[str, object]:
+    """Run Debye-temperature predictions using substrate-derived (B, G).
+
+    Returns rows + summary, comparable to run_test() but with substrate
+    moduli substituted in for the materials covered by substrate_elasticity.
+    """
+    rows: Dict[str, Dict[str, float]] = {}
+    pred_arr: List[float] = []
+    meas_arr: List[float] = []
+    pred_arr_sub_only: List[float] = []
+    meas_arr_sub_only: List[float] = []
+    for name, mat in MATERIALS.items():
+        row = predict_theta_D_substrate_moduli(mat)
+        rows[name] = row
+        pred_arr.append(row["theta_pred"])
+        meas_arr.append(row["theta_meas"])
+        if row["using_substrate"]:
+            pred_arr_sub_only.append(row["theta_pred"])
+            meas_arr_sub_only.append(row["theta_meas"])
+
+    pred = np.asarray(pred_arr)
+    meas = np.asarray(meas_arr)
+    rel = (pred - meas) / meas
+
+    pred_s = np.asarray(pred_arr_sub_only)
+    meas_s = np.asarray(meas_arr_sub_only)
+    rel_s = (pred_s - meas_s) / meas_s
+
+    summary = {
+        "n_materials_total":              len(rows),
+        "n_materials_substrate":          int(sum(
+            1 for r in rows.values() if r["using_substrate"]
+        )),
+        "mean_abs_rel_err_substrate_only": float(np.abs(rel_s).mean()),
+        "max_abs_rel_err_substrate_only":  float(np.abs(rel_s).max()),
+        "mean_abs_rel_err_total":          float(np.abs(rel).mean()),
+    }
+    return {"rows": rows, "summary": summary}
+
+
+# --------------------------------------------------------------------------- #
 # Quasi-harmonic / anharmonic correction                                      #
 # --------------------------------------------------------------------------- #
 #
