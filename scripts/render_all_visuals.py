@@ -9997,6 +9997,135 @@ def render_nuclear_be_test() -> list[str]:
     return [save(fig, "121_nuclear_be_test.png")]
 
 
+def render_polywell() -> list[str]:
+    """Render visuals/127_polywell_geometry.png and 128_polywell_scaling.png.
+
+    Polywell device = Bussard's IEC fusion geometry: 6 magnetic coils on
+    the faces of a cube → maps directly to the substrate Q_3 cell.
+    """
+    from src.stiff_medium.substrate_polywell import (
+        PolywellGeometry,
+        PolywellSimulator,
+    )
+    out: list[str] = []
+
+    # ----- 127: 3D cube of magnets + Wiffle Ball trap volume -----
+    geom = PolywellGeometry(r_coil=0.15, coil_current=1.0e3, coil_turns=10)
+    coils = geom.coil_positions()
+    normals = geom.coil_normals()
+    r_coil = geom.r_coil
+    r_wb = geom.wiffle_ball_radius()
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection="3d")
+
+    # Draw the 6 coils as rings normal to their face
+    theta = np.linspace(0.0, 2.0 * np.pi, 80)
+    coil_R = 0.40 * r_coil  # visualization radius for the ring
+    for centre, n in zip(coils, normals):
+        # build two unit vectors orthogonal to n
+        if abs(n[2]) < 0.9:
+            up = np.array([0.0, 0.0, 1.0])
+        else:
+            up = np.array([1.0, 0.0, 0.0])
+        e1 = np.cross(n, up)
+        e1 = e1 / np.linalg.norm(e1)
+        e2 = np.cross(n, e1)
+        ring = (centre[None, :]
+                + coil_R * (np.cos(theta)[:, None] * e1[None, :]
+                            + np.sin(theta)[:, None] * e2[None, :]))
+        ax.plot(ring[:, 0], ring[:, 1], ring[:, 2],
+                color="darkorange", linewidth=2.5)
+        ax.scatter(*centre, c="red", s=80, edgecolors="black",
+                   linewidths=1.2, zorder=5)
+
+    # Cube edges connecting opposite face centres? Better: draw the
+    # encompassing cube wireframe at L = 2 r_coil
+    L = r_coil
+    cube_v = np.array([[sx, sy, sz] for sx in (-L, L) for sy in (-L, L) for sz in (-L, L)])
+    cube_edges = [(i, j) for i in range(8) for j in range(i + 1, 8)
+                  if int(np.sum(np.abs(cube_v[i] - cube_v[j]) > 1e-9)) == 1]
+    for a, b in cube_edges:
+        ax.plot(*zip(cube_v[a], cube_v[b]), color="gray", alpha=0.3, linewidth=1.2)
+
+    # Wiffle Ball confinement region — translucent sphere
+    u = np.linspace(0.0, 2.0 * np.pi, 40)
+    v = np.linspace(0.0, np.pi, 25)
+    xs = r_wb * np.outer(np.cos(u), np.sin(v))
+    ys = r_wb * np.outer(np.sin(u), np.sin(v))
+    zs = r_wb * np.outer(np.ones_like(u), np.cos(v))
+    ax.plot_surface(xs, ys, zs, color="cyan", alpha=0.18,
+                    edgecolor="none")
+
+    # central virtual cathode
+    ax.scatter(0, 0, 0, c="blue", s=180, edgecolors="navy",
+               linewidths=1.5, zorder=10, label="virtual cathode")
+
+    ax.set_xlim(-1.4 * r_coil, 1.4 * r_coil)
+    ax.set_ylim(-1.4 * r_coil, 1.4 * r_coil)
+    ax.set_zlim(-1.4 * r_coil, 1.4 * r_coil)
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+    ax.set_zlabel("z [m]")
+    ax.set_title(
+        f"Polywell = substrate Q_3: 6 coils on face centres of a cube\n"
+        f"|O_h| = 48 (substrate-forced).  "
+        f"Wiffle Ball radius r_wb = {r_wb*100:.1f} cm "
+        f"(r_coil={r_coil*100:.1f} cm × 4/5 = 1−1/K_rank)"
+    )
+    out.append(save(fig, "127_polywell_geometry.png"))
+
+    # ----- 128: power scaling vs B and r, substrate vs empirical -----
+    sim = PolywellSimulator(geometry=geom, voltage_V=12_000.0)
+    a, b = sim.substrate_exponents()
+
+    fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5.2))
+
+    # Left: P vs B (r fixed at 0.15 m WB-6)
+    B_grid = np.geomspace(0.05, 10.0, 60)
+    P_subs = sim.power_scaling(B=B_grid, r=0.15)
+    P_buss = (B_grid ** 4) * (0.15 ** 3)
+    ax1.loglog(B_grid, P_subs, "b-", linewidth=2.5,
+               label=f"Substrate Q_3: B^{a} r^{b}")
+    ax1.loglog(B_grid, P_buss, "r--", linewidth=1.8,
+               label="Bussard empirical: B^4 r^3")
+    ax1.axvline(0.10, color="gray", linestyle=":", alpha=0.7)
+    ax1.text(0.10, P_subs[0] * 1e6, "WB-6 B = 0.1 T",
+             rotation=90, va="bottom", ha="right", fontsize=9, color="gray")
+    ax1.set_xlabel("Magnetic field B [T]")
+    ax1.set_ylabel("Relative fusion power  ∝ B^a r^b  [arb]")
+    ax1.set_title("Polywell power vs B (r = 0.15 m fixed)")
+    ax1.legend(loc="lower right", fontsize=10)
+    ax1.grid(True, which="both", alpha=0.3)
+
+    # Right: P vs r (B fixed at 0.10 T WB-6)
+    r_grid = np.geomspace(0.05, 5.0, 60)
+    P_subs_r = sim.power_scaling(B=0.10, r=r_grid)
+    P_buss_r = (0.10 ** 4) * (r_grid ** 3)
+    ax2.loglog(r_grid, P_subs_r, "b-", linewidth=2.5,
+               label=f"Substrate Q_3: B^{a} r^{b}")
+    ax2.loglog(r_grid, P_buss_r, "r--", linewidth=1.8,
+               label="Bussard empirical: B^4 r^3")
+    ax2.axvline(0.15, color="gray", linestyle=":", alpha=0.7)
+    ax2.text(0.15, P_subs_r[0] * 1e6, "WB-6 r = 0.15 m",
+             rotation=90, va="bottom", ha="right", fontsize=9, color="gray")
+    ax2.set_xlabel("Device radius r [m]")
+    ax2.set_ylabel("Relative fusion power  ∝ B^a r^b  [arb]")
+    ax2.set_title("Polywell power vs r (B = 0.10 T fixed)")
+    ax2.legend(loc="lower right", fontsize=10)
+    ax2.grid(True, which="both", alpha=0.3)
+
+    fig2.suptitle(
+        "Substrate Q_3 prediction REPRODUCES Bussard's empirical B^4 r^3 fit\n"
+        "(curves coincide on log-log; substrate explains WHY the empirical "
+        "fit takes that form)",
+        fontsize=11.5,
+    )
+    fig2.tight_layout()
+    out.append(save(fig2, "128_polywell_scaling.png"))
+    return out
+
+
 def main() -> None:
     print(f"Rendering all visualizations to {VISUALS_DIR}/")
     print("=" * 70)
@@ -10112,6 +10241,8 @@ def main() -> None:
          render_madelung_test),
         ("Nuclear BE: substrate vs AME2020 (25 isotopes A=2..238)",
          render_nuclear_be_test),
+        ("Polywell IEC fusion (Q_3 cube, 6-coil Wiffle Ball, B^4 r^3)",
+         render_polywell),
     ]
     all_paths = []
     for name, fn in renderers:
