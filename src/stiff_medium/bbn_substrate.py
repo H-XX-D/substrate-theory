@@ -39,6 +39,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
 
+from .substrate_li7_suppression import SUBSTRATE_LI7_SUPPRESSION_FACTOR
+
 
 # ---------------------------------------------------------------------------
 # Observational central values (PDG 2024 / Pitrou et al. 2018 compilation)
@@ -92,7 +94,10 @@ class BBNSubstrate:
 
     eta: float = ETA_BARYON_PHOTON
     n_eff: float = N_EFF_STANDARD
-    li7_substrate_suppression: float = 3.0  # Be-7 destruction factor
+    li7_substrate_suppression: float = SUBSTRATE_LI7_SUPPRESSION_FACTOR
+    # ^ Be-7 destruction factor.  Derived value: n_A / K_rank = 15 / 5 = 3
+    # (face-pair adjacency channels per 4-simplex vertex during the
+    # substrate de-saturation epoch; see substrate_li7_suppression).
 
     # Observed values (overridable)
     obs: Dict[str, float] = field(

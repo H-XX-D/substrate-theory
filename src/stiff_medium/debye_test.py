@@ -231,7 +231,9 @@ def predict_theta_D(mat: Material) -> Dict[str, float]:
 # pipeline.
 
 
-def predict_theta_D_substrate_moduli(mat: Material) -> Dict[str, float]:
+def predict_theta_D_substrate_moduli(mat: Material,
+                                     full_substrate_eps_coh: bool = False
+                                     ) -> Dict[str, float]:
     """Debye-temperature prediction using SUBSTRATE-DERIVED (B, G).
 
     Uses substrate_elasticity.bulk_modulus_substrate /
@@ -241,17 +243,33 @@ def predict_theta_D_substrate_moduli(mat: Material) -> Dict[str, float]:
     Falls back to the empirical (B, G) for materials not in the substrate-
     elasticity database (Silver, Tungsten, Germanium, Beryllium, Magnesium,
     Tin), with a 'using_substrate_moduli' flag.
+
+    Parameters
+    ----------
+    full_substrate_eps_coh : bool, default False
+        When True, additionally sources ε_coh from
+        ``substrate_cohesive_energy.eps_coh_substrate`` (closing the
+        Cat-B → Cat-A chain on ε_coh) instead of the per-material
+        Kittel-handbook anchor in substrate_elasticity.MATERIALS.
+        For materials not in substrate_cohesive_energy.MATERIALS the
+        function falls back to the substrate_elasticity handbook anchor.
     """
     from .substrate_elasticity import (
         MATERIALS as ELASTIC_MATS,
         bulk_modulus_substrate,
+        bulk_modulus_substrate_full,
         shear_modulus_substrate,
+        shear_modulus_substrate_full,
     )
 
     if mat.name in ELASTIC_MATS:
         emat = ELASTIC_MATS[mat.name]
-        B_use = bulk_modulus_substrate(emat)
-        G_use = shear_modulus_substrate(emat)
+        if full_substrate_eps_coh:
+            B_use, _ = bulk_modulus_substrate_full(emat)
+            G_use, _ = shear_modulus_substrate_full(emat)
+        else:
+            B_use = bulk_modulus_substrate(emat)
+            G_use = shear_modulus_substrate(emat)
         using_substrate = True
     else:
         B_use = mat.B_GPa
@@ -280,11 +298,21 @@ def predict_theta_D_substrate_moduli(mat: Material) -> Dict[str, float]:
     }
 
 
-def run_test_substrate_moduli() -> Dict[str, object]:
+def run_test_substrate_moduli(full_substrate_eps_coh: bool = False
+                              ) -> Dict[str, object]:
     """Run Debye-temperature predictions using substrate-derived (B, G).
 
     Returns rows + summary, comparable to run_test() but with substrate
     moduli substituted in for the materials covered by substrate_elasticity.
+
+    Parameters
+    ----------
+    full_substrate_eps_coh : bool, default False
+        Pass-through to ``predict_theta_D_substrate_moduli``.  When True,
+        the ε_coh anchor is itself derived from
+        ``substrate_cohesive_energy``, closing the Cat-B → Cat-A chain
+        on cohesive energy for the 6 metals (Cu, Al, Au, Ni, Pb, Fe)
+        with substrate cohesive-energy entries.
     """
     rows: Dict[str, Dict[str, float]] = {}
     pred_arr: List[float] = []
@@ -292,7 +320,9 @@ def run_test_substrate_moduli() -> Dict[str, object]:
     pred_arr_sub_only: List[float] = []
     meas_arr_sub_only: List[float] = []
     for name, mat in MATERIALS.items():
-        row = predict_theta_D_substrate_moduli(mat)
+        row = predict_theta_D_substrate_moduli(
+            mat, full_substrate_eps_coh=full_substrate_eps_coh
+        )
         rows[name] = row
         pred_arr.append(row["theta_pred"])
         meas_arr.append(row["theta_meas"])

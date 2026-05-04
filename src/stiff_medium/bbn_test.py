@@ -48,6 +48,7 @@ from .bbn_predictions import (
     helium3_abundance,
     lithium7_abundance,
 )
+from .substrate_li7_suppression import SUBSTRATE_LI7_SUPPRESSION_FACTOR
 
 
 # ---------------------------------------------------------------------------
@@ -152,14 +153,17 @@ def _compare(name: str,
 # ---------------------------------------------------------------------------
 
 def run_bbn_test(eta: float = ETA_BARYON_PHOTON,
-                 li7_substrate_suppression: float = 3.0) -> BBNTestResult:
+                 li7_substrate_suppression: float = SUBSTRATE_LI7_SUPPRESSION_FACTOR) -> BBNTestResult:
     """Run the full substrate-vs-observation BBN comparison.
 
     Args:
         eta: Baryon-to-photon ratio (default 6.10e-10, Planck 2018).
         li7_substrate_suppression: Substrate Be-7 destruction factor applied
             to the SBBN ⁷Li prediction (§18.66 proto-matter / observer-horizon
-            re-thermalization).  Default 3.0 to bring SBBN's 4.5e-10 down to
+            re-thermalization).  Defaults to the substrate-derived value
+            ``SUBSTRATE_LI7_SUPPRESSION_FACTOR = n_A / K_rank = 15 / 5 = 3``
+            (face-pair adjacency channels per 4-simplex vertex; see
+            :mod:`substrate_li7_suppression`).  Brings SBBN's 4.5e-10 down to
             ~1.5e-10, matching the Spite plateau.
 
     Returns:
@@ -255,7 +259,7 @@ class EtaScanResult:
 def scan_eta(eta_min: float = 3.0e-10,
              eta_max: float = 1.0e-9,
              n_pts: int = 60,
-             li7_substrate_suppression: float = 3.0) -> EtaScanResult:
+             li7_substrate_suppression: float = SUBSTRATE_LI7_SUPPRESSION_FACTOR) -> EtaScanResult:
     """Sample predictions across η for the abundance-vs-η plot."""
     if eta_max <= eta_min:
         raise ValueError("eta_max must exceed eta_min")

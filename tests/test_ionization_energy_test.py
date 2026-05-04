@@ -164,6 +164,8 @@ def test_run_test_summary_keys():
         "krank_max_pct",
         "substrate_HF_mean_pct",
         "substrate_HF_max_pct",
+        "substrate_HF_exchange_mean_pct",
+        "substrate_HF_exchange_max_pct",
         "calibrated_mean_pct",
         "calibrated_max_pct",
     }
@@ -182,6 +184,14 @@ def test_run_test_summary_keys():
     assert (
         res["summary"]["substrate_HF_mean_pct"]                                # type: ignore[index]
         < res["summary"]["krank_mean_pct"] / 2.0                               # type: ignore[index]
+    )
+    # Substrate-HF + Möbius exchange -- closes the p-shell over-shielding gap
+    # below 5% mean (well under 10% target); zero per-element knobs
+    assert res["summary"]["substrate_HF_exchange_mean_pct"] < 5.0       # type: ignore[index,operator]
+    # Substrate-HF + exchange beats pure HF Koopmans
+    assert (
+        res["summary"]["substrate_HF_exchange_mean_pct"]                       # type: ignore[index]
+        < res["summary"]["substrate_HF_mean_pct"]                              # type: ignore[index]
     )
 
 
@@ -209,7 +219,8 @@ def test_best_group_slater_is_row2_s():
 
 def test_predicted_ies_positive_in_all_modes():
     for Z in range(1, 19):
-        for mode in ("slater", "krank", "substrate_HF", "calibrated"):
+        for mode in ("slater", "krank", "substrate_HF", "substrate_HF_exchange",
+                     "calibrated"):
             _, ie = predict_ionization_energy(Z, mode)
             assert ie > 0.0, f"Z={Z}, mode={mode}: IE = {ie}"
 
@@ -352,11 +363,13 @@ def test_predict_substrate_K_rank_matches_solve_with_krank():
 # --------------------------------------------------------------------------- #
 
 def test_method_category_map_correct():
-    """K_rank is Category A; HF Koopmans is B; Calibrated is C; Slater baseline."""
-    assert METHOD_CATEGORY["krank"]        == "A"
-    assert METHOD_CATEGORY["substrate_HF"] == "B"
-    assert METHOD_CATEGORY["calibrated"]   == "C"
-    assert METHOD_CATEGORY["slater"]       == "baseline"
+    """K_rank is Category A; HF Koopmans is B; HF+exchange is A; Calibrated is C;
+    Slater baseline."""
+    assert METHOD_CATEGORY["krank"]                  == "A"
+    assert METHOD_CATEGORY["substrate_HF"]           == "B"
+    assert METHOD_CATEGORY["substrate_HF_exchange"]  == "A"
+    assert METHOD_CATEGORY["calibrated"]             == "C"
+    assert METHOD_CATEGORY["slater"]                 == "baseline"
     # Labels are present and informative
     for k in METHOD_CATEGORY:
         assert k in METHOD_CATEGORY_LABEL
@@ -365,11 +378,16 @@ def test_method_category_map_correct():
 
 def test_named_entry_points_match_legacy_switch():
     """predict_substrate_K_rank / predict_slater / predict_substrate_HF /
-    predict_calibrated all match the legacy mode-switch wrapper."""
+    predict_substrate_HF_exchange / predict_calibrated all match the legacy
+    mode-switch wrapper."""
+    from src.stiff_medium.ionization_energy_test import (
+        predict_substrate_HF_exchange as _pred_hfx,
+    )
     for Z in (1, 2, 5, 10, 14, 18):
         assert predict_substrate_K_rank(Z) == predict_ionization_energy(Z, "krank")
         assert predict_slater(Z)            == predict_ionization_energy(Z, "slater")
         assert predict_substrate_HF(Z)      == predict_ionization_energy(Z, "substrate_HF")
+        assert _pred_hfx(Z)                 == predict_ionization_energy(Z, "substrate_HF_exchange")
         assert predict_calibrated(Z)        == predict_ionization_energy(Z, "calibrated")
 
 
@@ -440,10 +458,106 @@ def test_predict_substrate_HF_unknown_Z_raises():
 # Cross-mode: ranking of methods on mean error                                #
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# Substrate-HF + Möbius exchange (Category A — closes p-shell over-shielding) #
+# --------------------------------------------------------------------------- #
+
+def test_HFx_hydrogen_exact():
+    """H: substrate exchange factor = 1 (no electrons), so HFx == HF."""
+    z, ie = predict_ionization_energy(1, "substrate_HF_exchange")
+    assert ie == pytest.approx(13.6057, abs=1e-3)
+
+
+def test_HFx_helium_factor_one():
+    """He has no inner core, so closed-s-pair correction = 1; HFx == HF for He."""
+    _, ie_hf = predict_ionization_energy(2, "substrate_HF")
+    _, ie_hx = predict_ionization_energy(2, "substrate_HF_exchange")
+    assert ie_hx == pytest.approx(ie_hf, rel=1e-12)
+
+
+def test_HFx_mean_error_below_5_pct():
+    """Substrate-HF + Möbius exchange: mean abs err < 5% across H..Ar.
+    Headline value: 2.78%; this is the new Category-A primary substrate
+    prediction once the Möbius exchange kernel is added on top of HF."""
+    rows = build_rows(18)
+    errs = [r.err_HFx_pct for r in rows]
+    mean_err = sum(errs) / len(errs)
+    assert mean_err < 5.0, f"Substrate-HF + exchange mean = {mean_err:.2f}%"
+    # Headline value: 2.78%
+    assert mean_err == pytest.approx(2.78, abs=0.5)
+
+
+def test_HFx_outperforms_pure_HF_on_average():
+    """Substrate-HF + exchange beats pure HF Koopmans on average."""
+    rows = build_rows(18)
+    err_hf = sum(r.err_HF_pct for r in rows) / len(rows)
+    err_hx = sum(r.err_HFx_pct for r in rows) / len(rows)
+    assert err_hx < err_hf, (
+        f"HF mean {err_hf:.2f}%, HF+exchange mean {err_hx:.2f}% — "
+        f"exchange should improve"
+    )
+
+
+def test_HFx_closes_oxygen_gap():
+    """Substrate exchange specifically closes the O / S half-shell anomaly
+    that pure HF Koopmans gets wrong by 26% / 15% respectively."""
+    rows = build_rows(18)
+    o_row = next(r for r in rows if r.Z == 8)
+    s_row = next(r for r in rows if r.Z == 16)
+    # O: HF 26.3% → HFx ~10% (factor of 2.5 better)
+    assert o_row.err_HFx_pct < o_row.err_HF_pct / 2.0
+    # S: HF 14.9% → HFx ~0.6% (factor of 20+ better)
+    assert s_row.err_HFx_pct < s_row.err_HF_pct / 5.0
+
+
+def test_HFx_improves_be_mg_closed_s():
+    """Be (2s²) and Mg (3s²) HF Koopmans under-predicts by ~10% each;
+    substrate closed-s-pair correction (+1/(K_pair·K_rank) = +1/10) closes
+    the gap to <2% each."""
+    rows = build_rows(18)
+    be_row = next(r for r in rows if r.Z == 4)
+    mg_row = next(r for r in rows if r.Z == 12)
+    assert be_row.err_HFx_pct < 2.0
+    assert mg_row.err_HFx_pct < 2.0
+
+
+def test_HFx_does_not_change_simple_p_shell_targets():
+    """B, C, N, Al, Si, P (k_p ≤ 3 — half-shell intact): substrate exchange
+    factor = 1, so HFx == HF for these elements."""
+    intact = [5, 6, 7, 13, 14, 15]
+    for Z in intact:
+        _, ie_hf = predict_ionization_energy(Z, "substrate_HF")
+        _, ie_hx = predict_ionization_energy(Z, "substrate_HF_exchange")
+        assert ie_hx == pytest.approx(ie_hf, rel=1e-12), (
+            f"Z={Z}: HFx must equal HF for intact half-shell"
+        )
+
+
+def test_HFx_does_not_change_lithium_or_sodium():
+    """Li (2s¹) and Na (3s¹): no closed-s pair, no half-shell correction;
+    HFx == HF."""
+    for Z in (3, 11):
+        _, ie_hf = predict_ionization_energy(Z, "substrate_HF")
+        _, ie_hx = predict_ionization_energy(Z, "substrate_HF_exchange")
+        assert ie_hx == pytest.approx(ie_hf, rel=1e-12), (
+            f"Z={Z}: HFx must equal HF for s¹ targets"
+        )
+
+
+def test_HFx_unknown_Z_raises():
+    from src.stiff_medium.substrate_hf_exchange import (
+        predict_substrate_HF_exchange,
+    )
+    with pytest.raises(ValueError):
+        predict_substrate_HF_exchange(19)
+
+
 def test_method_ranking_on_mean_error():
-    """Calibrated < Substrate-HF < K_rank < Slater (mean abs error)."""
+    """Calibrated < Substrate-HF+exchange < Substrate-HF < K_rank < Slater
+    (mean abs error)."""
     res = run_test()
     s = res["summary"]
-    assert s["calibrated_mean_pct"]   < s["substrate_HF_mean_pct"]   # type: ignore[index]
-    assert s["substrate_HF_mean_pct"] < s["krank_mean_pct"]          # type: ignore[index]
-    assert s["krank_mean_pct"]        < s["slater_mean_pct"]         # type: ignore[index]
+    assert s["calibrated_mean_pct"]   < s["substrate_HF_exchange_mean_pct"]  # type: ignore[index]
+    assert s["substrate_HF_exchange_mean_pct"] < s["substrate_HF_mean_pct"]  # type: ignore[index]
+    assert s["substrate_HF_mean_pct"] < s["krank_mean_pct"]                  # type: ignore[index]
+    assert s["krank_mean_pct"]        < s["slater_mean_pct"]                 # type: ignore[index]

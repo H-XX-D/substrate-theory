@@ -163,39 +163,63 @@ _ALLOY_BASE_ELEMENT: Dict[str, str] = {
 }
 
 
-def youngs_modulus_substrate_GPa(material_name: str) -> float | None:
+def youngs_modulus_substrate_GPa(material_name: str,
+                                 full_substrate_eps_coh: bool = False
+                                 ) -> float | None:
     """Substrate-derived Young's modulus E = 9BG/(3B+G) for a material.
 
     Returns the substrate-predicted Young's modulus in GPa for materials
     covered by substrate_elasticity (Cu, Al, Au, Ni, Pb, Fe, diamond, Si),
     or None if the material is not in the substrate-elasticity database
     (or it is a complex alloy that would need its own per-alloy entry).
+
+    Parameters
+    ----------
+    full_substrate_eps_coh : bool, default False
+        When True, sources ε_coh from ``substrate_cohesive_energy`` so
+        the Young's modulus is fully substrate-derived (no per-material
+        cohesive-energy anchor).
     """
     from .substrate_elasticity import (
         MATERIALS as ELASTIC_MATS,
         bulk_modulus_substrate,
+        bulk_modulus_substrate_full,
         shear_modulus_substrate,
+        shear_modulus_substrate_full,
     )
 
     base = _ALLOY_BASE_ELEMENT.get(material_name, material_name)
     if base not in ELASTIC_MATS:
         return None
     emat = ELASTIC_MATS[base]
-    B = bulk_modulus_substrate(emat)
-    G = shear_modulus_substrate(emat)
+    if full_substrate_eps_coh:
+        B, _ = bulk_modulus_substrate_full(emat)
+        G, _ = shear_modulus_substrate_full(emat)
+    else:
+        B = bulk_modulus_substrate(emat)
+        G = shear_modulus_substrate(emat)
     return 9.0 * B * G / (3.0 * B + G)
 
 
-def substrate_E_predictions() -> Dict[str, Dict[str, float]]:
+def substrate_E_predictions(full_substrate_eps_coh: bool = False
+                            ) -> Dict[str, Dict[str, float]]:
     """Return substrate-derived Young's modulus alongside measured E.
 
     For each material in MATERIALS that has a substrate-elasticity entry
     (or maps to one via _ALLOY_BASE_ELEMENT), compute E_substrate and
     compare to E_measured. Returns a dict keyed by material name.
+
+    Parameters
+    ----------
+    full_substrate_eps_coh : bool, default False
+        Pass-through to ``youngs_modulus_substrate_GPa``: when True, the
+        ε_coh anchor is itself substrate-derived (Cat-A path).
     """
     out: Dict[str, Dict[str, float]] = {}
     for name, props in MATERIALS.items():
-        E_sub = youngs_modulus_substrate_GPa(name)
+        E_sub = youngs_modulus_substrate_GPa(
+            name, full_substrate_eps_coh=full_substrate_eps_coh
+        )
         if E_sub is None:
             continue
         E_meas = props["E"]

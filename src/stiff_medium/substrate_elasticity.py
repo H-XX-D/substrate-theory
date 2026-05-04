@@ -343,6 +343,170 @@ def shear_modulus_substrate(material: ElasticMaterial,
 
 
 # --------------------------------------------------------------------------- #
+# Substrate-derived ε_coh pathway (uses substrate_cohesive_energy)            #
+# --------------------------------------------------------------------------- #
+#
+# The previous functions take ε_coh from the per-material handbook anchor in
+# MATERIALS.eps_coh_eV (Cat-B: structure prediction, ε_coh as one knob per
+# element). The functions below use the SUBSTRATE-DERIVED ε_coh from
+# substrate_cohesive_energy.eps_coh_substrate, which itself depends only on
+#   ε_face_atom = E_h / (n_A · N_BAM)        (substrate-derived constant)
+#   Z_coord                                   (crystal coordination integer)
+#   M_v                                       (per-element valence multiplier;
+#                                              one O(1) knob per metal)
+#
+# This promotes the substrate-elasticity stack from "ε_coh as per-material
+# energy knob" to "M_v as per-element O(1) multiplier" — see
+# substrate_cohesive_energy.py docstring for honest scoping.
+#
+# Diamond and Silicon are not in the substrate_cohesive_energy database
+# (covalent rather than metallic); for those materials the functions below
+# fall back to the handbook anchor with a flag in the returned dict.
+
+
+def eps_coh_eV_from_substrate_or_handbook(name: str, fallback_eV: float
+                                           ) -> tuple[float, bool]:
+    """Return (ε_coh in eV, used_substrate_flag) for a material.
+
+    Looks up ``name`` in substrate_cohesive_energy.MATERIALS and returns
+    the substrate-derived ε_coh if present; otherwise returns the
+    ``fallback_eV`` (handbook anchor) and used_substrate_flag = False.
+    """
+    try:
+        from .substrate_cohesive_energy import eps_coh_for_elasticity
+        return eps_coh_for_elasticity(name), True
+    except KeyError:
+        return fallback_eV, False
+
+
+def bulk_modulus_substrate_full(material: ElasticMaterial,
+                                alpha: float = ALPHA_SUBSTRATE
+                                ) -> tuple[float, bool]:
+    """Bulk modulus with ε_coh sourced from substrate_cohesive_energy.
+
+    Returns (B in GPa, used_substrate_flag).  When the material is in
+    substrate_cohesive_energy.MATERIALS, ε_coh is taken from that module's
+    K_4 face-pair derivation (ε_face_atom · M_v · Z_coord); otherwise
+    falls back to the handbook anchor stored in MATERIALS.
+    """
+    eps_eV, flag = eps_coh_eV_from_substrate_or_handbook(
+        material.name, material.eps_coh_eV
+    )
+    eps_J = eps_eV * J_PER_EV
+    n_atomic = material.n_atomic_per_m3
+    B_pa = (2.0 * alpha / 9.0) * eps_J * n_atomic
+    return B_pa / PASCAL_PER_GPA, flag
+
+
+def shear_modulus_substrate_full(material: ElasticMaterial,
+                                 alpha: float = ALPHA_SUBSTRATE
+                                 ) -> tuple[float, bool]:
+    """Shear modulus with ε_coh sourced from substrate_cohesive_energy.
+
+    Returns (G in GPa, used_substrate_flag).  Same pathway as
+    ``bulk_modulus_substrate_full``.
+    """
+    eps_eV, flag = eps_coh_eV_from_substrate_or_handbook(
+        material.name, material.eps_coh_eV
+    )
+    eps_J = eps_eV * J_PER_EV
+    n_atomic = material.n_atomic_per_m3
+    G_pa = (2.0 * alpha / 15.0) * eps_J * n_atomic
+    return G_pa / PASCAL_PER_GPA, flag
+
+
+def substrate_moduli_for_debye_full(material_name: str
+                                    ) -> tuple[float, float, bool]:
+    """Return (B_GPa, G_GPa, used_substrate_eps_coh_flag) using the
+    substrate-derived ε_coh pathway.
+
+    Drop-in for downstream tests (debye, fracture) that want a fully
+    substrate-derived (B, G) including the ε_coh derivation.  For
+    materials with no substrate cohesive-energy entry (Diamond, Silicon),
+    falls back to the handbook ε_coh anchor and flags it in the third
+    return value.
+    """
+    if material_name not in MATERIALS:
+        raise KeyError(
+            f"Material {material_name} not in substrate-elasticity database; "
+            f"available: {list(MATERIALS.keys())}"
+        )
+    mat = MATERIALS[material_name]
+    B, flag = bulk_modulus_substrate_full(mat)
+    G, _ = shear_modulus_substrate_full(mat)
+    return B, G, flag
+
+
+def run_test_full() -> Dict[str, object]:
+    """Run substrate-elasticity with substrate-derived ε_coh pathway.
+
+    Same shape as ``run_test`` but uses ``bulk_modulus_substrate_full`` /
+    ``shear_modulus_substrate_full`` so the ε_coh anchor is itself
+    substrate-derived for the 6 metals (Cu, Al, Au, Ni, Pb, Fe) covered
+    by ``substrate_cohesive_energy.MATERIALS``.  Diamond and Silicon
+    fall back to the handbook ε_coh anchor and are flagged in each row.
+    """
+    rows: Dict[str, Dict[str, float]] = {}
+    B_pred_arr: List[float] = []
+    G_pred_arr: List[float] = []
+    B_meas_arr: List[float] = []
+    G_meas_arr: List[float] = []
+    n_substrate = 0
+
+    for name, mat in MATERIALS.items():
+        B_pred, used_sub = bulk_modulus_substrate_full(mat)
+        G_pred, _ = shear_modulus_substrate_full(mat)
+        B_meas = mat.B_GPa_meas
+        G_meas = mat.G_GPa_meas
+        if used_sub:
+            n_substrate += 1
+        rows[name] = {
+            "name":             mat.name,
+            "lattice":          mat.lattice,
+            "Z_coord":          mat.Z_coord,
+            "B_pred_GPa":       B_pred,
+            "G_pred_GPa":       G_pred,
+            "B_meas_GPa":       B_meas,
+            "G_meas_GPa":       G_meas,
+            "B_rel_err":        (B_pred - B_meas) / B_meas,
+            "G_rel_err":        (G_pred - G_meas) / G_meas,
+            "used_substrate_eps_coh": used_sub,
+        }
+        B_pred_arr.append(B_pred)
+        G_pred_arr.append(G_pred)
+        B_meas_arr.append(B_meas)
+        G_meas_arr.append(G_meas)
+
+    Bp = np.asarray(B_pred_arr)
+    Gp = np.asarray(G_pred_arr)
+    Bm = np.asarray(B_meas_arr)
+    Gm = np.asarray(G_meas_arr)
+    rel_B = (Bp - Bm) / Bm
+    rel_G = (Gp - Gm) / Gm
+
+    def _log_pearson(p: np.ndarray, m: np.ndarray) -> float:
+        lp = np.log(p)
+        lm = np.log(m)
+        lpm = lp - lp.mean()
+        lmm = lm - lm.mean()
+        denom = math.sqrt(float((lpm * lpm).sum()) * float((lmm * lmm).sum()))
+        return float((lpm * lmm).sum()) / denom if denom > 0.0 else float("nan")
+
+    summary = {
+        "n_materials":              len(rows),
+        "n_with_substrate_eps_coh": n_substrate,
+        "mean_abs_rel_err_B":       float(np.abs(rel_B).mean()),
+        "mean_abs_rel_err_G":       float(np.abs(rel_G).mean()),
+        "B_within_30pct":           int(sum(1 for r in rel_B if abs(r) <= 0.30)),
+        "B_within_50pct":           int(sum(1 for r in rel_B if abs(r) <= 0.50)),
+        "G_within_50pct":           int(sum(1 for r in rel_G if abs(r) <= 0.50)),
+        "B_loglog_pearson":         _log_pearson(Bp, Bm),
+        "G_loglog_pearson":         _log_pearson(Gp, Gm),
+    }
+    return {"rows": rows, "summary": summary}
+
+
+# --------------------------------------------------------------------------- #
 # Strict zero-knob (ε_face × dimensional scaling) prediction                  #
 # --------------------------------------------------------------------------- #
 #

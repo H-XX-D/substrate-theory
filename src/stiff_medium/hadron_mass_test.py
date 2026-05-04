@@ -55,9 +55,17 @@ A/B/C category labels for downstream classification:
       SUBSTRATE-DERIVED via :mod:`substrate_chpt`. Replaces the previous
       Cat-C empirical (CHI_CHIRAL_K=3.5, ETA_PRIME_INPUT_MEV=957.78,
       ETA_THETA_P_DEG=-11) inputs.
+  [A*] M_C_MSBAR_SUBSTRATE_GEV, M_B_MSBAR_SUBSTRATE_GEV — substrate-composite
+      MS-bar masses from substrate_heavy_quark_masses (form
+      m = (4/5)·T^(9/5)·Λ_QCD, integer-rigid, zero free parameters; matches
+      PDG MS-bar to <1%; Cat-A* because exponent 9/5 lacks an independent
+      derivation from substrate dynamics). NOT used in Cornell solver
+      because Cornell scheme is mass-scheme-specific (kinetic / pole-strip).
   [B] m_q_struct (proton anchor), m_s_struct (Λ anchor), Λ_QCD anchor
-  [C] m_c_pole, m_b_pole (heavy-quark pole masses for Cornell — empirical
-      inputs not yet substrate-derived)
+  [C] m_c_pole, m_b_pole (heavy-quark Cornell-scheme masses — empirical
+      because Cornell uses kinetic/pole-strip scheme, not MS-bar; substrate
+      MS-bar prediction is correct but in a different scheme — see
+      M_C_MSBAR_SUBSTRATE_GEV / M_B_MSBAR_SUBSTRATE_GEV)
 
 Honest verdict for the bare face-spin v4 model (computed, not asserted):
 
@@ -101,6 +109,10 @@ from .substrate_chpt import (
     chiral_enhancement_substrate as _chi_chiral_substrate_fn,
     m_eta1_substrate_MeV as _m_eta1_substrate,
     eta_mixing_off_diagonal_substrate as _m_81_sq_substrate,
+)
+from .substrate_heavy_quark_masses import (
+    m_c_pole_substrate_GeV as _m_c_pole_substrate_GeV,
+    m_b_pole_substrate_GeV as _m_b_pole_substrate_GeV,
 )
 
 
@@ -176,12 +188,44 @@ SIGMA_SUBSTRATE_NATURAL_GEV2: float = (
 NO free parameters. Within 11% of empirical lattice 0.18 GeV². Exposed
 for cross-comparison with the (K_pair·K_rank − 1)/K_pair version."""
 
-# [A] Substrate-derived heavy-quark-mass values for the Cornell module via
-# pole-mass substitution into alpha_s_running_from_K Candidate A (α_M = σ ξ²,
-# §18.61.1 Möbius coupling). These REPLACE the previous empirical PDG
-# running values (0.30 / 0.22 at m_c / m_b respectively).
+# [A*] Substrate MS-bar masses for the heavy quarks, derived via
+# substrate_heavy_quark_masses.heavy_quark_pole_mass_MeV with the form
+# m_MSbar = (K_pair²/K_rank) · T_q^(n_R/(K_pair·K_rank)) · Λ_QCD
+#         = (4/5) · T_q^(9/5) · 200 MeV
+# These give m_c = 1.275 GeV (+0.00% vs PDG MS-bar), m_b = 4.203 GeV
+# (+0.55% vs PDG MS-bar). Zero free parameters; integer-rigid.
+# See substrate_heavy_quark_masses for honest Cat-A* classification.
+#
+# IMPORTANT: For Cornell quarkonium V(r) = -4α_s/(3r) + σr the input is
+# conventionally the KINETIC (or pole-strip) mass, which is HIGHER than
+# MS-bar by an O(α_s) Wilson coefficient. The substrate MS-bar value
+# alone gives J/ψ at -3.0% and Υ at -8.9% in Cornell (substrate scheme
+# mismatch). The substrate 1-loop Wilson conversion gives +6.5% J/ψ and
+# -1.3% Υ — also worse than the empirical Cornell-pole pole-strip masses
+# 1.32, 4.50 GeV which give -0.5% J/ψ, -2.8% Υ.
+#
+# DECISION: keep the empirical Cornell-pole values for the Cornell solver
+# (Cat-C, scheme-specific), but expose the substrate MS-bar prediction
+# separately for documentation. This honestly reflects that the SUBSTRATE
+# correctly predicts MS-bar mass at <1% but Cornell phenomenology uses a
+# different scheme that introduces additional Wilson-coefficient uncertainty.
 M_C_POLE_GEV: float = 1.32
 M_B_POLE_GEV_FOR_AS: float = 4.50  # forward-declare for ALPHA_S_B init
+
+# Substrate MS-bar predictions (separately exposed for documentation)
+M_C_MSBAR_SUBSTRATE_GEV: float = _m_c_pole_substrate_GeV()
+"""[A*] Substrate-derived charm MS-bar mass = 1.275 GeV (+0.00% vs PDG).
+
+Substrate-composite prediction from inventory integers (zero free parameters,
+integer-rigid). NOT used in the Cornell solver because Cornell phenomenology
+uses a different (kinetic / pole-strip) mass scheme. See substrate_heavy_quark_masses."""
+
+M_B_MSBAR_SUBSTRATE_GEV: float = _m_b_pole_substrate_GeV()
+"""[A*] Substrate-derived bottom MS-bar mass = 4.203 GeV (+0.55% vs PDG).
+
+Substrate-composite prediction from inventory integers (zero free parameters,
+integer-rigid). NOT used in the Cornell solver because Cornell phenomenology
+uses a different (kinetic / pole-strip) mass scheme. See substrate_heavy_quark_masses."""
 
 
 def _alpha_s_substrate(Q_GeV: float) -> float:
@@ -234,17 +278,23 @@ the proper log running). Zero free parameters."""
 # M_C_POLE_GEV defined above as forward-declaration (1.32 GeV).
 # M_B_POLE_GEV is the canonical exported name; alias to the substrate-init value.
 M_B_POLE_GEV: float = M_B_POLE_GEV_FOR_AS
-"""[C] Bottom-quark mass for quarkonium (kinetic-like). Between PDG MS-bar
-m_b(m_b) = 4.18 GeV and 1S-kinetic 4.73 GeV. EMPIRICAL — heavy-quark pole
-mass remains a Category C input; substrate's `heavy_quark_masses.py`
-T_b·Λ = 1.229 GeV is too low for Cornell direct use."""
+"""[C] Bottom-quark mass for Cornell quarkonium (kinetic/pole-strip scheme).
+Phenomenological 4.50 GeV used to anchor Cornell σ + α_s phenomenology;
+sits between PDG MS-bar m_b(m_b) = 4.18 GeV and 1S-kinetic ~4.7 GeV.
 
-# Per-module note: M_C_POLE_GEV (= 1.32 GeV) was already defined above
-# alongside the substrate α_s computation; documenting its category here.
-# [C] Between PDG MS-bar m_c(m_c) = 1.275 GeV and the constituent-quark value
-# 1.5 GeV. The substrate constituent torque value T_c·Λ = 0.634 GeV is too
-# low to enter Cornell directly. EMPIRICAL — heavy-quark pole mass remains
-# a Category C input.
+EMPIRICAL — heavy-quark mass scheme remains a Category C input for the
+Cornell solver. The substrate's MS-bar prediction (Cat-A*,
+M_B_MSBAR_SUBSTRATE_GEV = 4.203 GeV) is a CORRECT prediction of the PDG
+MS-bar mass but is not the right scheme for direct Cornell use; see
+substrate_heavy_quark_masses for the full discussion."""
+
+# Per-module note on M_C_POLE_GEV (= 1.32 GeV):
+# [C] Cornell phenomenological pole-strip mass between PDG MS-bar
+# m_c(m_c) = 1.275 GeV and 1S-kinetic ~1.40 GeV. EMPIRICAL — used in
+# Cornell solver because the substrate MS-bar prediction (M_C_MSBAR_SUBSTRATE_GEV
+# = 1.275 GeV, Cat-A*) is in a different mass scheme. Substrate's MS-bar
+# value is a CORRECT prediction of PDG MS-bar at +0.00% but the Cornell
+# scheme is higher by an O(α_s) Wilson conversion.
 
 
 @lru_cache(maxsize=64)
@@ -857,6 +907,8 @@ __all__ = [
     "ALPHA_S_B",
     "M_C_POLE_GEV",
     "M_B_POLE_GEV",
+    "M_C_MSBAR_SUBSTRATE_GEV",
+    "M_B_MSBAR_SUBSTRATE_GEV",
     "CHI_CHIRAL_K",
     "ETA_PRIME_INPUT_MEV",
     "ETA_THETA_P_DEG",

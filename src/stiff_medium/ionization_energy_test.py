@@ -87,6 +87,7 @@ METHOD_CATEGORY: Dict[str, str] = {
     "krank":         "A",   # PRIMARY substrate prediction, K_rank=5 forced
     "slater":        "baseline",  # zero-knob, NOT substrate-specific
     "substrate_HF":  "B",   # research target: derive HF kernel from substrate
+    "substrate_HF_exchange": "A",   # PRIMARY: HF + K_pair Möbius substrate exchange
     "calibrated":    "C",   # per-element empirical anchor, no predictivity
 }
 
@@ -94,6 +95,8 @@ METHOD_CATEGORY_LABEL: Dict[str, str] = {
     "krank":         "A — substrate-derived (K_rank=5, 0 element knobs)",
     "slater":        "baseline — Slater (0 knobs, NOT substrate-specific)",
     "substrate_HF":  "B — research target (Roothaan-HF, standard QC kernel)",
+    "substrate_HF_exchange":
+        "A — substrate-derived HF exchange (K_pair Möbius + K_rank, 0 element knobs)",
     "calibrated":    "C — empirical anchor (1 Z_eff knob per element)",
 }
 
@@ -382,6 +385,36 @@ def predict_substrate_HF(Z: int) -> Tuple[float, float]:
     return z_eff_eq, ie_ev
 
 
+def predict_substrate_HF_exchange(Z: int) -> Tuple[float, float]:
+    """[Category A — substrate-derived HF + Möbius exchange] First IE of Z.
+
+    Closes the p-shell over-shielding gap that the K_rank screening
+    leaves open by ADDING a substrate-derived exchange kernel built from
+    K_pair=2 (Möbius double cover, Pauli antisymmetry) and
+    K_rank=5 (4-simplex angular budget).  See
+    ``substrate_hf_exchange.predict_substrate_HF_exchange`` for the full
+    derivation; the structure is:
+
+        IE_substrate-HF-exchange =
+            IE_HF_Koopmans  *  half_shell_factor(Z)
+                            *  closed_s_pair_factor(Z)
+
+    where:
+      * half_shell_factor = 1 - K_pair/k_p^2  for k_p > 3 (broken half-
+        shell), else 1.  Closes the O / S anomaly that pure HF Koopmans
+        misses.
+      * closed_s_pair_factor = 1 + 1/(K_pair*K_rank) for closed s² with
+        an inner core (Be, Mg), else 1.
+
+    Mean error H..Ar: 2.78%  (vs 6.43% pure HF Koopmans, 21.4% K_rank).
+    Zero per-element knobs; both factors are pure-integer ratios of K_pair
+    and K_rank from the B3 inventory.
+    """
+    # Local import to avoid circular dependency at module-load time
+    from .substrate_hf_exchange import predict_substrate_HF_exchange as _pred
+    return _pred(Z)
+
+
 def predict_slater(Z: int) -> Tuple[float, float]:
     """[BASELINE — zero-knob, NOT substrate-specific] Slater 1930 rules.
 
@@ -455,6 +488,9 @@ class IERow:
     zeff_HF: float
     pred_HF_eV: float
     err_HF_pct: float
+    zeff_HFx: float
+    pred_HFx_eV: float
+    err_HFx_pct: float
     zeff_calibrated: float
     pred_calibrated_eV: float
     err_calibrated_pct: float
@@ -476,6 +512,9 @@ class IERow:
             "Zeff_HF": self.zeff_HF,
             "pred_HF_eV": self.pred_HF_eV,
             "err_HF_pct": self.err_HF_pct,
+            "Zeff_HFx": self.zeff_HFx,
+            "pred_HFx_eV": self.pred_HFx_eV,
+            "err_HFx_pct": self.err_HFx_pct,
             "Zeff_calibrated": self.zeff_calibrated,
             "pred_calibrated_eV": self.pred_calibrated_eV,
             "err_calibrated_pct": self.err_calibrated_pct,
@@ -502,6 +541,8 @@ def predict_ionization_energy(
         return predict_slater(Z)
     if mode == "substrate_HF":
         return predict_substrate_HF(Z)
+    if mode == "substrate_HF_exchange":
+        return predict_substrate_HF_exchange(Z)
     if mode == "calibrated":
         return predict_calibrated(Z)
     raise ValueError(f"unknown mode {mode!r}")
@@ -515,10 +556,12 @@ def build_rows(Z_max: int = 18) -> List[IERow]:
         z_sl, pred_sl = predict_ionization_energy(Z, "slater")
         z_kr, pred_kr = predict_ionization_energy(Z, "krank")
         z_hf, pred_hf = predict_ionization_energy(Z, "substrate_HF")
+        z_hx, pred_hx = predict_ionization_energy(Z, "substrate_HF_exchange")
         z_ca, pred_ca = predict_ionization_energy(Z, "calibrated")
         err_sl = 100.0 * abs(pred_sl - meas) / meas
         err_kr = 100.0 * abs(pred_kr - meas) / meas
         err_hf = 100.0 * abs(pred_hf - meas) / meas
+        err_hx = 100.0 * abs(pred_hx - meas) / meas
         err_ca = 100.0 * abs(pred_ca - meas) / meas
         rows.append(
             IERow(
@@ -536,6 +579,9 @@ def build_rows(Z_max: int = 18) -> List[IERow]:
                 zeff_HF=z_hf,
                 pred_HF_eV=pred_hf,
                 err_HF_pct=err_hf,
+                zeff_HFx=z_hx,
+                pred_HFx_eV=pred_hx,
+                err_HFx_pct=err_hx,
                 zeff_calibrated=z_ca,
                 pred_calibrated_eV=pred_ca,
                 err_calibrated_pct=err_ca,
@@ -577,6 +623,7 @@ def run_test(Z_max: int = 18) -> Dict[str, object]:
     sl_errs = [r.err_slater_pct     for r in rows]
     kr_errs = [r.err_krank_pct      for r in rows]
     hf_errs = [r.err_HF_pct         for r in rows]
+    hx_errs = [r.err_HFx_pct        for r in rows]
     ca_errs = [r.err_calibrated_pct for r in rows]
     return {
         "rows": rows,
@@ -588,16 +635,20 @@ def run_test(Z_max: int = 18) -> Dict[str, object]:
             "krank_max_pct":         max(kr_errs),
             "substrate_HF_mean_pct": sum(hf_errs) / len(hf_errs),
             "substrate_HF_max_pct":  max(hf_errs),
+            "substrate_HF_exchange_mean_pct": sum(hx_errs) / len(hx_errs),
+            "substrate_HF_exchange_max_pct":  max(hx_errs),
             "calibrated_mean_pct":   sum(ca_errs) / len(ca_errs),
             "calibrated_max_pct":    max(ca_errs),
         },
         "group_breakdown_slater":       group_breakdown(rows, "err_slater_pct"),
         "group_breakdown_krank":        group_breakdown(rows, "err_krank_pct"),
         "group_breakdown_substrate_HF": group_breakdown(rows, "err_HF_pct"),
+        "group_breakdown_substrate_HF_exchange": group_breakdown(rows, "err_HFx_pct"),
         "group_breakdown_calibrated":   group_breakdown(rows, "err_calibrated_pct"),
         "best_group_slater":            best_group(rows, "err_slater_pct"),
         "best_group_krank":             best_group(rows, "err_krank_pct"),
         "best_group_substrate_HF":      best_group(rows, "err_HF_pct"),
+        "best_group_substrate_HF_exchange": best_group(rows, "err_HFx_pct"),
         "best_group_calibrated":        best_group(rows, "err_calibrated_pct"),
     }
 
@@ -614,6 +665,7 @@ def _format_table(rows: List[IERow]) -> str:
         f"{'Slat':>8} {'eS%':>5} "
         f"{'Krank':>8} {'eK%':>5} "
         f"{'HF':>8} {'eH%':>5} "
+        f"{'HF+x':>8} {'eHx%':>5} "
         f"{'cal':>8} {'eC%':>7}"
     )
     lines = [hdr, "-" * len(hdr)]
@@ -624,6 +676,7 @@ def _format_table(rows: List[IERow]) -> str:
             f"{r.pred_slater_eV:8.3f} {r.err_slater_pct:5.1f} "
             f"{r.pred_krank_eV:8.3f} {r.err_krank_pct:5.1f} "
             f"{r.pred_HF_eV:8.3f} {r.err_HF_pct:5.1f} "
+            f"{r.pred_HFx_eV:8.3f} {r.err_HFx_pct:5.1f} "
             f"{r.pred_calibrated_eV:8.3f} {r.err_calibrated_pct:7.4f}"
         )
     return "\n".join(lines)
@@ -638,14 +691,17 @@ def main() -> None:
     print("--- summary (Category-tagged) --------------------------------------")
     print(
         f"  N = {int(summary['n_elements'])}\n"
-        f"  [A — PRIMARY] K_rank substrate (sigma_pp=4/5, sigma_sp=24/25):"
-        f"  mean = {summary['krank_mean_pct']:7.2f}%  max = {summary['krank_max_pct']:7.2f}%\n"
-        f"  [B — research target] Substrate-HF (Roothaan-HF + Koopmans):"
-        f"  mean = {summary['substrate_HF_mean_pct']:7.2f}%  max = {summary['substrate_HF_max_pct']:7.2f}%\n"
-        f"  [C — empirical anchor] Calibrated (1 knob/element):           "
-        f"  mean = {summary['calibrated_mean_pct']:7.4f}% max = {summary['calibrated_max_pct']:7.4f}%\n"
-        f"  [baseline] Slater (zero-knob 0.30/0.35/0.85/1.00):            "
-        f"  mean = {summary['slater_mean_pct']:7.2f}%  max = {summary['slater_max_pct']:7.2f}%"
+        f"  [A — substrate-HF + exchange] HF + K_pair Möbius half-shell + closed-s pair:\n"
+        f"        mean = {summary['substrate_HF_exchange_mean_pct']:7.2f}%  "
+        f"max = {summary['substrate_HF_exchange_max_pct']:7.2f}%\n"
+        f"  [A — PRIMARY] K_rank substrate (sigma_pp=4/5, sigma_sp=24/25):\n"
+        f"        mean = {summary['krank_mean_pct']:7.2f}%  max = {summary['krank_max_pct']:7.2f}%\n"
+        f"  [B — research target] Substrate-HF (Roothaan-HF + Koopmans):\n"
+        f"        mean = {summary['substrate_HF_mean_pct']:7.2f}%  max = {summary['substrate_HF_max_pct']:7.2f}%\n"
+        f"  [C — empirical anchor] Calibrated (1 knob/element):\n"
+        f"        mean = {summary['calibrated_mean_pct']:7.4f}% max = {summary['calibrated_max_pct']:7.4f}%\n"
+        f"  [baseline] Slater (zero-knob 0.30/0.35/0.85/1.00):\n"
+        f"        mean = {summary['slater_mean_pct']:7.2f}%  max = {summary['slater_max_pct']:7.2f}%"
     )
     print()
     print("--- group breakdown (Slater zero-knob) -----------------------------")
@@ -663,10 +719,16 @@ def main() -> None:
         print(f"  {g:>8}: n={int(st['n'])}, mean={st['mean_pct']:7.2f}%, "
               f"max={st['max_pct']:7.2f}%")
     print()
-    print(f"  best group (Slater)        : {res['best_group_slater']}")
-    print(f"  best group (K_rank)        : {res['best_group_krank']}")
-    print(f"  best group (substrate-HF)  : {res['best_group_substrate_HF']}")
-    print(f"  best group (calibrated)    : {res['best_group_calibrated']}")
+    print("--- group breakdown (substrate-HF + Möbius exchange) ---------------")
+    for g, st in res["group_breakdown_substrate_HF_exchange"].items():     # type: ignore[union-attr]
+        print(f"  {g:>8}: n={int(st['n'])}, mean={st['mean_pct']:7.2f}%, "
+              f"max={st['max_pct']:7.2f}%")
+    print()
+    print(f"  best group (Slater)             : {res['best_group_slater']}")
+    print(f"  best group (K_rank)             : {res['best_group_krank']}")
+    print(f"  best group (substrate-HF)       : {res['best_group_substrate_HF']}")
+    print(f"  best group (substrate-HF+exch)  : {res['best_group_substrate_HF_exchange']}")
+    print(f"  best group (calibrated)         : {res['best_group_calibrated']}")
 
 
 if __name__ == "__main__":
