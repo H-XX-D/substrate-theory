@@ -213,8 +213,17 @@ with
 | coefficient | value | source |
 |-------------|-------|--------|
 | `a_C` | **0.7200 MeV** | substrate-derived: (3/5) * alpha_em * hbar*c / R_0,  R_0 = 1.20 fm |
-| `a_sym` | 23.0 MeV | empirical SEMF (NOT presently substrate-derivable from primitives) |
+| `a_sym` | **22.22 MeV** | substrate-derived: ε_face × K_pair × K_rank = Λ_QCD/9  (3.4% from empirical 23) |
 | `a_p` | 11.0 MeV | empirical SEMF (NOT presently substrate-derivable from primitives) |
+
+**Update 2026-05-01**: `a_sym` has been promoted to Category A (substrate-derived).
+See `src/stiff_medium/nuclear_asymmetry_substrate.py` for the derivation chain.
+The substrate value 22.22 MeV is `ε_face · K_pair · K_rank = (Λ_QCD/(n_A·N_BAM))·2·5`,
+equivalently `Λ_QCD/9 = Λ_QCD/R²` (R=3 the Koide denominator).  It lands inside
+the literature SEMF range (Bohr–Mottelson 23, Wapstra 23.7, Möller–Nix 25.2,
+Myers–Swiatecki 21) at the 3.4 % level relative to the central Bohr–Mottelson
+value.  The downstream stacking issue (over-correction onto bare close-packed
+prediction) is documented below and is NOT a problem with the a_sym derivation.
 
 The Coulomb coefficient is **substrate-clean**: the K_4 nucleon-radius
 anchor R_0 = 1.20 fm is the same anchor that sets the matched-face
@@ -298,13 +307,30 @@ predominantly electrostatic, exactly as expected.
    with `R_0 = 1.20 fm` is exactly the textbook 0.72 MeV value.  No
    free parameter; the K_4 nucleon-radius anchor handles it.
 
-2. **Asymmetry is NOT presently substrate-derivable.**  The textbook
-   `a_sym = 23 MeV` is empirical; in standard nuclear physics it
-   emerges from a Fermi-gas kinetic asymmetry plus the isovector NN
-   potential average.  `nuclear_binding.py` has a substrate-flavoured
-   Fermi-gas estimate that lands in the 18-25 MeV band, but this is
-   not a primitive derivation, just a re-cast of the same Fermi-gas
-   logic with substrate notation.
+2. **Asymmetry IS substrate-derivable** (promoted 2026-05-01).
+   The substrate-derived value is
+
+       a_sym = ε_face · K_pair · K_rank = 2.222 · 2 · 5 = Λ_QCD/9 ≈ 22.22 MeV
+
+   Three equivalent forms (all = Λ_QCD/9):
+     * Primitive product:   ε_face · K_pair · K_rank
+     * Λ-anchored:          Λ_QCD · (K_pair·K_rank) / (n_A·N_BAM)
+     * Koide form:          Λ_QCD / R²    (R = 3, Koide denominator)
+
+   Physical reading: each unmatched n-p face-pair in an N≠Z stack costs
+   the deuteron face-pair binding (ε_face) times the Möbius isospin sheet
+   count (K_pair = 2) times the 4-simplex vertex count (K_rank = 5).
+   The (N-Z)²/A scaling is imported from the standard SEMF combinatorial
+   argument; the substrate work fixes only the prefactor.
+
+   Match to empirical Bohr–Mottelson 23 MeV:  3.4 % (relative).
+   See `src/stiff_medium/nuclear_asymmetry_substrate.py` for full chain.
+
+   Caveat: the `K_pair · K_rank` factor is preferred for its direct
+   physical reading, but several other inventory products land in the
+   right ballpark (e.g. `ε_face · N_BAM · K_pair` = 26.67 MeV at +15.9%,
+   `ε_face · (K_pair·K_rank+1)` = 24.44 MeV at +6.3%).  The 3.4 % match
+   is striking but does not in itself uniquely force the chosen factor.
 
 3. **Pairing is NOT presently substrate-derivable.**  `a_p = 11 MeV`
    is empirical.  The substrate has no microscopic pairing model

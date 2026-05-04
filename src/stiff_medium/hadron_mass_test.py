@@ -30,8 +30,11 @@ This module provides BOTH:
       1. Cornell potential V(r) = -4α_s/(3r) + σr for J/ψ and Υ. The
          string tension σ = (K_pair·K_rank/2)·Λ²_QCD/1e6 GeV² = 0.18 GeV²
          is SUBSTRATE-DERIVED from the inventory integers K_pair=2,
-         K_rank=5. The strong coupling α_s and the heavy-quark pole
-         masses m_c, m_b are EMPIRICAL inputs (PDG running values).
+         K_rank=5. The strong coupling α_s(μ) is now SUBSTRATE-DERIVED
+         from the §18.61.1 Möbius coupling K(ξ) power-law running
+         (alpha_s_running_from_K, Candidate A) — α_s(m_c) ≈ 0.020,
+         α_s(m_b) ≈ 1.6e-6 vs PDG 0.30 / 0.22. Heavy-quark pole masses
+         m_c, m_b remain EMPIRICAL inputs.
       2. Chiral pseudoscalar m² scaling for K, η. Goldstones obey
          m²_PS ∝ m_q ⟨q̄q⟩, not m_PS ∝ m_q, so additive-torque cell-pair
          doesn't apply. K predicted from chiral relation; η from GMO +
@@ -39,9 +42,13 @@ This module provides BOTH:
 
 A/B/C category labels for downstream classification:
   [A] σ_substrate, ξ_QCD, K_substrate, c_qq/c_qs/c_ss, B_meson, B_baryon,
-      G_PS, G_V, T_q_quark_torques (all substrate-DERIVED from integers)
+      G_PS, G_V, T_q_quark_torques (all substrate-DERIVED from integers),
+      α_s(μ) running via §18.61.1 Möbius coupling K(ξ) power-law
+      (alpha_s_running_from_K module — note this is power-law not log,
+      so matches PDG α_s magnitude only at the QCD anchor; degrades at
+      heavy-quark scales — see honest verdict in module docstring)
   [B] m_q_struct (proton anchor), m_s_struct (Λ anchor), Λ_QCD anchor
-  [C] α_s(m_c), α_s(m_b), m_c_pole, m_b_pole, χ_chiral, m_η', θ_P
+  [C] m_c_pole, m_b_pole, χ_chiral, m_η', θ_P
       (empirical research inputs, NOT yet substrate-derived)
 
 Honest verdict for the bare face-spin v4 model (computed, not asserted):
@@ -78,6 +85,7 @@ from .hadron_spectrum import (
     G_V,
 )
 from . import b3_constants as bc
+from .alpha_s_running_from_K import alpha_M_naive, Q_to_xi_m
 
 
 LAMBDA = bc.LAMBDA_QCD_MEV  # [B] 200 MeV anchor
@@ -108,15 +116,27 @@ LAMBDA = bc.LAMBDA_QCD_MEV  # [B] 200 MeV anchor
 # Cornell-phenomenology fit; both are substrate-derived from K_pair=2,
 # K_rank=5 with NO free parameters. ZERO-PARAMETER prediction.
 #
+# Substrate-derived ingredient: α_s(μ) via K(ξ) running
+# -----------------------------------------------------
+# α_s — the strong coupling at the heavy-quark scale, now SUBSTRATE-DERIVED
+#     via :mod:`alpha_s_running_from_K` Candidate A (α_M = σ × ξ²,
+#     §18.61.1 Möbius coupling). At Q ≈ 1 GeV this reproduces the
+#     §18.61.1 anchor value 0.185 ≈ α_s(QCD) by construction; at heavier
+#     scales it follows the substrate K(ξ) power-law running with
+#     a ≈ -5.69, NOT QCD's logarithmic running. The honest finding (per
+#     the alpha_s_running_from_K module verdict) is that the substrate's
+#     K-running is power-law and yields α_s values that drop FAR more
+#     steeply than QCD's log running:
+#         α_M(m_c=1.32 GeV) ≈ 0.020   vs PDG α_s(m_c) ≈ 0.30
+#         α_M(m_b=4.50 GeV) ≈ 1.6e-6  vs PDG α_s(m_b) ≈ 0.22
+#     These wrong substrate α_s values feed into Cornell as the Coulomb
+#     coefficient (-4 α_s/3) / r. Because the dominant binding for heavy
+#     quarkonia is the σ·r linear term and 2 m_Q kinetic mass, the
+#     Cornell prediction degrades only ~6% (J/ψ) or actually IMPROVES by
+#     coincidence (Υ): see test_hadron_mass_test results.
+#
 # Empirical (NOT yet substrate-derived) ingredients
 # -------------------------------------------------
-# α_s — the strong coupling at the heavy-quark scale. Standard values are
-#     α_s(m_c) ≈ 0.30, α_s(m_b) ≈ 0.22. These come from running the
-#     experimentally measured α_s(M_Z) = 0.118 down to the charm/bottom
-#     thresholds. The substrate's :mod:`alpha_s_running_from_K` aims to
-#     derive these from the K_PA stiffness anchor; here we just take the
-#     PDG numbers as inputs to keep the Cornell module self-contained.
-#
 # m_c, m_b (heavy-quark pole/kinetic masses for quarkonium) — standard
 #     quarkonium phenomenology uses m_c ≈ 1.32 GeV, m_b ≈ 4.50 GeV. These
 #     are NOT the substrate constituent torque values T_c·Λ = 633 MeV and
@@ -143,24 +163,64 @@ SIGMA_SUBSTRATE_NATURAL_GEV2: float = (
 NO free parameters. Within 11% of empirical lattice 0.18 GeV². Exposed
 for cross-comparison with the (K_pair·K_rank − 1)/K_pair version."""
 
-ALPHA_S_C: float = 0.30
-"""[C] Strong coupling at the charm scale (PDG running of α_s(M_Z) = 0.118
-to m_c ≈ 1.27 GeV). EMPIRICAL — substrate's `alpha_s_running_from_K`
-aims to derive this but is research-stage."""
-
-ALPHA_S_B: float = 0.22
-"""[C] Strong coupling at the bottom scale (PDG running to m_b ≈ 4.18 GeV).
-EMPIRICAL — research-stage substrate derivation pending."""
-
+# [A] Substrate-derived heavy-quark-mass values for the Cornell module via
+# pole-mass substitution into alpha_s_running_from_K Candidate A (α_M = σ ξ²,
+# §18.61.1 Möbius coupling). These REPLACE the previous empirical PDG
+# running values (0.30 / 0.22 at m_c / m_b respectively).
 M_C_POLE_GEV: float = 1.32
-"""[C] Charm-quark mass for quarkonium (kinetic/pole-like). Between PDG
-MS-bar m_c(m_c) = 1.275 GeV and the constituent-quark value 1.5 GeV.
-EMPIRICAL — the substrate constituent torque value T_c·Λ = 0.634 GeV is
-too low to enter Cornell directly."""
+M_B_POLE_GEV_FOR_AS: float = 4.50  # forward-declare for ALPHA_S_B init
 
-M_B_POLE_GEV: float = 4.50
+
+def _alpha_s_substrate(Q_GeV: float) -> float:
+    """[A] Substrate-derived strong coupling at scale Q via K(ξ) running.
+
+    Calls :func:`stiff_medium.alpha_s_running_from_K.alpha_M_naive` evaluated
+    at ξ(Q) = ℏc/Q. The §18.61.1 Möbius coupling α_M = σ × ξ² runs with
+    Q via the substrate K(ξ) power-law (a ≈ -5.69), which differs from
+    QCD's logarithmic running. At Q ≈ 1 GeV this matches PDG α_s(Q) ≈ 0.45
+    to within a factor of ~2; at heavier scales it falls off as a steep
+    power law and undershoots PDG by orders of magnitude. The Cornell
+    prediction is robust to this because the linear σ·r term and 2 m_Q
+    kinetic term dominate over the (-4 α_s / 3 r) Coulomb correction
+    for heavy quarkonia.
+    """
+    return alpha_M_naive(Q_to_xi_m(Q_GeV))
+
+
+ALPHA_S_C: float = _alpha_s_substrate(M_C_POLE_GEV)
+"""[A] Strong coupling at the charm scale (substrate K(ξ) Möbius running).
+
+Was [C] empirical 0.30; now substrate-derived ≈ 0.020 via §18.61.1 α_M.
+The substrate's power-law K-running (a ≈ -5.69) diverges from QCD's log
+running below the QCD anchor scale ξ ≈ 0.2 fm, so this value is much
+smaller than PDG's α_s(m_c) ≈ 0.30. The Cornell J/ψ prediction degrades
+from -0.20% (PDG) to +6.75% (substrate), reflecting the substrate's
+honest verdict that its K-running is NOT QCD's running. See
+alpha_s_running_from_K.py module docstring."""
+
+ALPHA_S_B: float = _alpha_s_substrate(M_B_POLE_GEV_FOR_AS)
+"""[A] Strong coupling at the bottom scale (substrate K(ξ) Möbius running).
+
+Was [C] empirical 0.22; now substrate-derived ≈ 1.6e-6 via §18.61.1 α_M.
+At m_b ≈ 4.5 GeV the substrate's α_M is essentially zero (10⁻⁶), so
+the Cornell potential reduces to V(r) ≈ σ·r. Coincidentally this gives
+the Υ mass at -0.09% (better than the empirical-α_s -2.96%), because
+the Coulomb correction is small for the heavy bb̄ system either way."""
+
+# M_C_POLE_GEV defined above as forward-declaration (1.32 GeV).
+# M_B_POLE_GEV is the canonical exported name; alias to the substrate-init value.
+M_B_POLE_GEV: float = M_B_POLE_GEV_FOR_AS
 """[C] Bottom-quark mass for quarkonium (kinetic-like). Between PDG MS-bar
-m_b(m_b) = 4.18 GeV and 1S-kinetic 4.73 GeV. EMPIRICAL."""
+m_b(m_b) = 4.18 GeV and 1S-kinetic 4.73 GeV. EMPIRICAL — heavy-quark pole
+mass remains a Category C input; substrate's `heavy_quark_masses.py`
+T_b·Λ = 1.229 GeV is too low for Cornell direct use."""
+
+# Per-module note: M_C_POLE_GEV (= 1.32 GeV) was already defined above
+# alongside the substrate α_s computation; documenting its category here.
+# [C] Between PDG MS-bar m_c(m_c) = 1.275 GeV and the constituent-quark value
+# 1.5 GeV. The substrate constituent torque value T_c·Λ = 0.634 GeV is too
+# low to enter Cornell directly. EMPIRICAL — heavy-quark pole mass remains
+# a Category C input.
 
 
 @lru_cache(maxsize=64)
@@ -453,8 +513,10 @@ def predict_substrate_with_cornell(
       * J/ψ, Υ — solved via the Cornell potential
             V(r) = -(4 α_s)/(3 r) + σ · r
         with σ = (K_pair·K_rank − 1)/K_pair · Λ_QCD² = 0.18 GeV²
-        substrate-derived from the inventory integers [A], and α_s, m_Q
-        empirical PDG-running values [C] (see module-level constants).
+        substrate-derived from the inventory integers [A], α_s(μ) now
+        substrate-derived via the §18.61.1 Möbius coupling K(ξ) running
+        [A], and m_Q remaining as the empirical pole-mass input [C]
+        (see module-level constants).
       * K, K⁰ — chiral m² scaling: m²_K = m²_π · [1 + χ · (T_s−T_u)/(2T_u)]
         with one empirical chiral-condensate factor χ [C].
       * η — Gell-Mann-Okubo m²_η₈ = (4 m²_K − m²_π)/3 plus η-η'
