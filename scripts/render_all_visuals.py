@@ -9768,6 +9768,202 @@ def render_sensory() -> list[str]:
     return _render()
 
 
+# ---------------------------------------------------------------------------
+# Madelung test (substrate vs published Madelung constants for 8 ionic crystals) - 119
+# ---------------------------------------------------------------------------
+
+def render_madelung_test() -> list[str]:
+    """Render visuals/119_madelung_test.png.
+
+    Two-panel figure:
+      Top:    grouped bars of substrate-predicted vs published Madelung
+              constant (per-FU convention) for the 8 ionic crystal types.
+      Bottom: per-crystal relative error in the convention the literature
+              uses for that salt, log-scale.
+    """
+    from src.stiff_medium.madelung_test import run_test
+
+    res = run_test(method="ewald", N_real=6, N_recip=6)
+    rows = res["rows"]
+    names = list(rows.keys())
+    pretty_names = {
+        "NaCl":             "NaCl",
+        "CsCl":             "CsCl",
+        "beta_CsCl_SC":     r"$\beta$-CsCl",
+        "ZnS_sphalerite":   "ZnS\n(sphal)",
+        "ZnS_wurtzite":     "ZnS\n(wurtz)",
+        "CaF2_fluorite":    r"CaF$_2$",
+        "TiO2_rutile":      r"TiO$_2$",
+        "Cu2O_cuprite":     r"Cu$_2$O",
+    }
+    pred_FU = np.array([rows[n]["M_per_FU_predicted"] for n in names])
+    pub_FU  = np.array([rows[n]["M_per_FU_published"] for n in names])
+    rel_err = np.array([rows[n]["rel_err_published"] for n in names])
+    labels = [pretty_names.get(n, n) for n in names]
+
+    fig, (ax_bar, ax_err) = plt.subplots(
+        2, 1, figsize=(13.0, 9.0), gridspec_kw={"height_ratios": [3.0, 1.5]},
+    )
+
+    # ---------- top: bar comparison (log y) ---------- #
+    x = np.arange(len(names))
+    w = 0.38
+    ax_bar.bar(x - w/2, pred_FU, w, label="Substrate Ewald",
+               color="#1f77b4", edgecolor="black", linewidth=0.5)
+    ax_bar.bar(x + w/2, pub_FU, w, label="Published",
+               color="#ff7f0e", edgecolor="black", linewidth=0.5,
+               alpha=0.85)
+    ax_bar.set_yscale("log")
+    ax_bar.set_xticks(x)
+    ax_bar.set_xticklabels(labels, fontsize=10)
+    ax_bar.set_ylabel("Madelung constant per formula unit  (log)")
+    ax_bar.set_title(
+        "Substrate K_4-lattice + Coulomb prediction vs published Madelung\n"
+        "constant across 8 ionic-crystal structure types  (zero free parameters)"
+    )
+    ax_bar.legend(loc="upper left", fontsize=10)
+    ax_bar.grid(True, axis="y", alpha=0.3, which="both")
+
+    # Annotate each bar with the rel-err in spec convention
+    for xi, (p, q, e) in enumerate(zip(pred_FU, pub_FU, rel_err)):
+        if e < 1e-3:
+            label = "match"
+        elif e < 5e-2:
+            label = f"{e * 100.0:.2f}%"
+        else:
+            label = f"{e * 100.0:.0f}%"
+        y = max(p, q) * 1.18
+        ax_bar.text(xi, y, label, ha="center", fontsize=9,
+                    color="black" if e < 5e-2 else "red")
+
+    # ---------- bottom: relative error log-scale ---------- #
+    err_pct = np.maximum(rel_err * 100.0, 1e-6)
+    bar_colors = [("#2ca02c" if v < 1e-1 else "#d62728") for v in err_pct]
+    ax_err.bar(x, err_pct, w * 1.5, color=bar_colors,
+               edgecolor="black", linewidth=0.5)
+    ax_err.set_yscale("log")
+    ax_err.set_xticks(x)
+    ax_err.set_xticklabels(labels, fontsize=10)
+    ax_err.set_ylabel("Relative error  [%]   (log)")
+    ax_err.axhline(0.1, color="black", linestyle=":", alpha=0.5,
+                   label="0.1% (machine precision Ewald)")
+    ax_err.axhline(5.0, color="orange", linestyle=":", alpha=0.5,
+                   label="5% (loose match)")
+    ax_err.set_title(
+        f"Per-crystal relative error against published value  "
+        f"(7/8 within 0.1%; rutile factor-~4 off by literature convention)"
+    )
+    ax_err.legend(loc="upper left", fontsize=9)
+    ax_err.grid(True, axis="y", alpha=0.3, which="both")
+
+    fig.tight_layout()
+    return [save(fig, "119_madelung_test.png")]
+
+
+# ---------------------------------------------------------------------------
+# Nuclear BE test (substrate vs AME2020 across 25 isotopes A=2..238) - 121
+# ---------------------------------------------------------------------------
+
+def render_nuclear_be_test() -> list[str]:
+    """Render visuals/121_nuclear_be_test.png.
+
+    Two-panel figure:
+      Top:    BE/A vs A -- substrate prediction (red squares) vs AME2020
+              (black circles), 25 isotopes from deuteron to U-238.
+      Bottom: Residual = BE_pred - BE_obs (MeV) vs A, with the textbook
+              Coulomb deficit ~ 0.72 * Z(Z-1) / A^{1/3} overlaid.
+    """
+    from src.stiff_medium.nuclear_be_test import (
+        compute_results,
+        summary_statistics,
+    )
+
+    results = compute_results()
+    stats = summary_statistics(results)
+
+    A_arr = np.array([r.isotope.A for r in results])
+    Z_arr = np.array([r.isotope.Z for r in results])
+    BE_pred_per_A = np.array([r.BE_pred_per_A for r in results])
+    BE_obs_per_A = np.array([r.BE_obs_per_A for r in results])
+    err_MeV = np.array([r.err_abs_MeV for r in results])
+    err_pct = np.array([r.err_pct for r in results])
+
+    # Sort by A for plotting
+    order = np.argsort(A_arr)
+    A_arr = A_arr[order]
+    Z_arr = Z_arr[order]
+    BE_pred_per_A = BE_pred_per_A[order]
+    BE_obs_per_A = BE_obs_per_A[order]
+    err_MeV = err_MeV[order]
+    err_pct = err_pct[order]
+    names = [results[i].isotope.name for i in order]
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 9), sharex=True,
+                                   gridspec_kw={'height_ratios': [3, 2]})
+
+    # ----- Top: BE/A vs A -----
+    ax1.plot(A_arr, BE_obs_per_A, 'ko-', markersize=7, linewidth=1.2,
+             alpha=0.85, label='AME2020 (measured)')
+    ax1.plot(A_arr, BE_pred_per_A, 'rs--', markersize=9, linewidth=1.4,
+             alpha=0.85, label=r'Substrate: $\eta_{coop}\cdot P(A)\cdot\varepsilon_{face}$')
+
+    # Annotate select isotopes
+    annotate_set = {'2H', '4He', '12C', '56Fe', '208Pb', '238U'}
+    for i, nm in enumerate(names):
+        if nm in annotate_set:
+            ax1.annotate(nm, (A_arr[i], BE_obs_per_A[i]),
+                         xytext=(0, -14), textcoords='offset points',
+                         ha='center', fontsize=9, color='black')
+
+    ax1.axvline(56, color='gray', linestyle=':', alpha=0.5, linewidth=1)
+    ax1.text(56, 9.6, 'Fe-56 BE/A peak', ha='center', fontsize=9,
+             color='gray')
+    ax1.set_ylabel('BE / A   [MeV / nucleon]', fontsize=11)
+    ax1.set_title('Substrate nuclear binding energy vs AME2020 (25 isotopes)\n'
+                  r'$\varepsilon_{face} = \Lambda_{QCD}/(n_A\cdot N_{BAM}) = 200/90 = 2.222$ MeV'
+                  '   (zero free parameters beyond 3 light-nucleus anchors)',
+                  fontsize=11)
+    ax1.legend(loc='lower right', fontsize=10)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_ylim(0, 11)
+
+    # Inline stats box
+    stat_str = (
+        f"n = {stats['n_isotopes']}\n"
+        f"mean abs err = {stats['mean_abs_err_pct']:.1f}%\n"
+        f"RMS err = {stats['rms_err_pct']:.1f}%\n"
+        f"max err = {stats['max_abs_err_pct']:.1f}% (7Li)\n"
+        f"within 5%: 7 / 25"
+    )
+    ax1.text(0.02, 0.97, stat_str, transform=ax1.transAxes,
+             fontsize=9, va='top', ha='left',
+             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+    # ----- Bottom: residual + Coulomb deficit overlay -----
+    # Substrate residual: BE_pred - BE_obs (MeV)
+    ax2.bar(A_arr, err_MeV, width=2.0, color='red', alpha=0.6,
+            edgecolor='darkred', label='Substrate residual (pred - obs)')
+
+    # Textbook Coulomb deficit: 0.72 * Z(Z-1) / A^{1/3}
+    # (this is what an unsubtracted Coulomb term *would* contribute)
+    A_smooth = np.linspace(2, 240, 240)
+    # Use Z = A/2 for the smooth curve (rough valley of stability)
+    Z_smooth = 0.5 * A_smooth
+    coulomb = 0.72 * Z_smooth * (Z_smooth - 1) / (A_smooth ** (1.0 / 3.0))
+    ax2.plot(A_smooth, coulomb, 'b--', linewidth=1.5, alpha=0.7,
+             label=r'Textbook Coulomb deficit  $\sim 0.72\,Z(Z-1)/A^{1/3}$ MeV')
+
+    ax2.axhline(0, color='black', linewidth=0.8)
+    ax2.set_xlabel('Mass number A', fontsize=11)
+    ax2.set_ylabel(r'$BE_{pred} - BE_{obs}$   [MeV]', fontsize=11)
+    ax2.legend(loc='upper left', fontsize=9)
+    ax2.grid(True, alpha=0.3)
+    ax2.set_xlim(0, 245)
+
+    fig.tight_layout()
+    return [save(fig, "121_nuclear_be_test.png")]
+
+
 def main() -> None:
     print(f"Rendering all visualizations to {VISUALS_DIR}/")
     print("=" * 70)
@@ -9879,6 +10075,10 @@ def main() -> None:
         ("Morphogenesis / Turing patterns (stripes/spots/maze + Wolpert French flag gradient)",
          render_morphogenesis),
         ("Substrate visualizer", render_substrate_visualizer),
+        ("Madelung constants: substrate vs published (8 ionic crystals)",
+         render_madelung_test),
+        ("Nuclear BE: substrate vs AME2020 (25 isotopes A=2..238)",
+         render_nuclear_be_test),
     ]
     all_paths = []
     for name, fn in renderers:
